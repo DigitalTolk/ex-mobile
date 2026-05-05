@@ -1,0 +1,63 @@
+# Dependencies
+node_modules/
+
+# Build and coverage output
+dist/
+coverage/
+icons/
+.vite/
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment and local config
+.env
+.env.*
+!.env.example
+
+# OS and editor state
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Capacitor / iOS generated output
+ios/App/build/
+ios/App/Pods/
+ios/App/Podfile.lock
+ios/App/DerivedData/
+ios/App/App/public/
+ios/App/App/capacitor.config.json
+ios/App/App/config.xml
+ios/App/xcuserdata/
+ios/App/*.xcarchive
+
+# Capacitor / Android generated output
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+android/app/src/main/res/xml/config.xml
+*.apk
+*.aab
+
+# Signing and release artifacts
+*.mobileprovision
+*.p12
+*.cer
+*.jks
+*.keystore
+build/
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/
+fastlane/test_output/
