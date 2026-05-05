@@ -139,6 +139,21 @@ describe('App', () => {
     expect(beginSSO).toHaveBeenCalledWith('https://chat.example.com');
   });
 
+  it('keeps loading state when initialization is cancelled before session resolves', async () => {
+    let resolveSession!: (value: Awaited<ReturnType<typeof loadStoredSession>>) => void;
+    vi.mocked(loadStoredSession).mockReturnValue(
+      new Promise((resolve) => {
+        resolveSession = resolve;
+      }),
+    );
+
+    const { unmount } = render(<App />);
+    unmount();
+    resolveSession({ serverUrl: 'https://chat.example.com', accessToken: null, user: null });
+
+    await waitFor(() => expect(SplashScreen.hide).toHaveBeenCalledTimes(1));
+  });
+
   it('shows login errors and can reset the server', async () => {
     vi.mocked(loadStoredSession).mockResolvedValue({
       serverUrl: 'https://chat.example.com',
@@ -209,6 +224,18 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'Chat https://chat.example.com token-2 Me' })).toBeInTheDocument();
   });
 
+  it('ignores auth callbacks before a server is configured', async () => {
+    vi.mocked(loadStoredSession).mockResolvedValue({ serverUrl: null, accessToken: null, user: null });
+
+    render(<App />);
+
+    await screen.findByRole('heading', { name: 'Setup' });
+    authCallback?.('token-without-server');
+
+    await waitFor(() => expect(completeMobileAuth).not.toHaveBeenCalled());
+    expect(screen.getByRole('heading', { name: 'Setup' })).toBeInTheDocument();
+  });
+
   it('shows callback failures on the login screen', async () => {
     vi.mocked(loadStoredSession).mockResolvedValue({
       serverUrl: 'https://chat.example.com',
@@ -223,6 +250,22 @@ describe('App', () => {
     authCallback?.('bad-token');
 
     expect(await screen.findByText('Unable to finish sign in.')).toBeInTheDocument();
+  });
+
+  it('shows callback Error messages on the login screen', async () => {
+    vi.mocked(loadStoredSession).mockResolvedValue({
+      serverUrl: 'https://chat.example.com',
+      accessToken: null,
+      user: null,
+    });
+    vi.mocked(completeMobileAuth).mockRejectedValue(new Error('token expired'));
+
+    render(<App />);
+
+    await screen.findByRole('heading', { name: 'Login https://chat.example.com' });
+    authCallback?.('bad-token');
+
+    expect(await screen.findByText('token expired')).toBeInTheDocument();
   });
 
   it('removes the deep-link listener on unmount', async () => {

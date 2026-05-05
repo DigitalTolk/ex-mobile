@@ -49,14 +49,32 @@ describe('apiFetch', () => {
     expect(headers.get('Content-Type')).toBe('text/plain');
   });
 
+  it('does not add a content type when there is no string body', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(apiFetch('https://chat.example.com', 'token-1', '/api/v1/messages')).resolves.toEqual({ ok: true });
+
+    const headers = fetchMock.mock.calls[0][1].headers as Headers;
+    expect(headers.has('Content-Type')).toBe(false);
+  });
+
   it.each([
     ['string error', JSON.stringify({ error: 'bad request' }), 'bad request'],
     ['object error', JSON.stringify({ error: { message: 'expired' } }), 'expired'],
     ['message field', JSON.stringify({ message: 'missing' }), 'missing'],
+    ['unrecognized JSON', JSON.stringify({ detail: 'unknown' }), '{"detail":"unknown"}'],
     ['plain text', 'nope', 'nope'],
     ['empty body', '', 'Bad Request'],
+    ['empty status text', '', 'Request failed (400)'],
   ])('throws ApiError from %s responses', async (_name, body, message) => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, { status: 400, statusText: 'Bad Request' })));
+    const statusText = _name === 'empty status text' ? '' : 'Bad Request';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, { status: 400, statusText })));
 
     await expect(apiFetch('https://chat.example.com', 'token-1', '/api/v1/fail')).rejects.toMatchObject({
       name: 'ApiError',

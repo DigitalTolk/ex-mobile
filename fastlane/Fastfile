@@ -46,6 +46,10 @@ def release_version_from_tag
   match[1]
 end
 
+def pr_marketing_version
+  "0.#{Time.now.utc.strftime("%Y%m%d")}.0"
+end
+
 def provisioning_profile_value(key)
   sh(
     "/usr/bin/security cms -D -i #{signing_profile_path.shellescape} > #{signing_profile_plist_path.shellescape}",
@@ -92,6 +96,7 @@ platform :ios do
   lane :testflight_pr do
     setup_ci
     install_ci_signing
+    set_pr_marketing_version
     set_ci_build_number
     build_app(
       project: ios_project_path,
@@ -180,6 +185,13 @@ platform :ios do
     increment_version_number(
       xcodeproj: ios_project_path,
       version_number: release_version_from_tag
+    )
+  end
+
+  private_lane :set_pr_marketing_version do
+    increment_version_number(
+      xcodeproj: ios_project_path,
+      version_number: pr_marketing_version
     )
   end
 

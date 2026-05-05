@@ -92,6 +92,43 @@ describe('ChatShell', () => {
     expect(apiFetch).toHaveBeenLastCalledWith('https://chat.example.com', 'token-1', '/api/v1/conversations/dm-1/messages');
   });
 
+  it('sends messages to a selected conversation', async () => {
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ conversationID: 'dm-1', displayName: 'Alice', type: 'dm' }])
+      .mockResolvedValueOnce({ items: [], hasMore: false })
+      .mockResolvedValueOnce(message({ id: 'sent-dm', parentID: 'dm-1', authorID: 'u-me', body: 'dm text' }));
+
+    renderShell();
+
+    await screen.findByRole('heading', { name: 'Alice' });
+    await userEvent.type(screen.getByRole('textbox', { name: 'Message' }), ' dm text ');
+    await userEvent.click(screen.getByRole('button', { name: /send message/i }));
+
+    expect(await screen.findByText('dm text')).toBeInTheDocument();
+    expect(apiFetch).toHaveBeenLastCalledWith(
+      'https://chat.example.com',
+      'token-1',
+      '/api/v1/conversations/dm-1/messages',
+      { method: 'POST', body: JSON.stringify({ body: 'dm text' }) },
+    );
+  });
+
+  it('does not send blank drafts', async () => {
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce([{ channelID: 'ch-1', channelName: 'general', channelType: 'public' }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ items: [], hasMore: false });
+
+    renderShell();
+
+    await screen.findByRole('heading', { name: 'general' });
+    await userEvent.type(screen.getByRole('textbox', { name: 'Message' }), '   ');
+    await userEvent.click(screen.getByRole('button', { name: /send message/i }));
+
+    expect(apiFetch).toHaveBeenCalledTimes(3);
+  });
+
   it('switches spaces, refreshes, and calls secondary actions', async () => {
     const onLogout = vi.fn();
     const onChangeServer = vi.fn();
@@ -132,6 +169,23 @@ describe('ChatShell', () => {
     renderShell();
 
     expect(await screen.findByText('Failed to load messages.')).toBeInTheDocument();
+  });
+
+  it('uses fallback workspace errors for non-Error failures', async () => {
+    vi.mocked(apiFetch).mockRejectedValueOnce('workspace down');
+    renderShell();
+
+    expect(await screen.findByText('Failed to load workspace.')).toBeInTheDocument();
+  });
+
+  it('shows message Error details', async () => {
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce([{ channelID: 'ch-1', channelName: 'general', channelType: 'public' }])
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error('messages down'));
+    renderShell();
+
+    expect(await screen.findByText('messages down')).toBeInTheDocument();
   });
 
   it('keeps the composer disabled until a space is selected', async () => {
