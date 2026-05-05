@@ -52,6 +52,10 @@ platform :ios do
 
   private_lane :install_ci_signing do
     keychain_name = "build.keychain"
+    signing_dir = File.expand_path("../build/ios", __dir__)
+    certificate_path = File.join(signing_dir, "certificate.p12")
+    profile_path = File.join(signing_dir, "profile.mobileprovision")
+
     create_keychain(
       name: keychain_name,
       password: ENV.fetch("MATCH_KEYCHAIN_PASSWORD", "ci-keychain-password"),
@@ -60,11 +64,11 @@ platform :ios do
       timeout: 3600
     )
 
-    certificate_path = "build/ios/certificate.p12"
-    profile_path = "build/ios/profile.mobileprovision"
-    sh("mkdir -p build/ios")
+    FileUtils.mkdir_p(signing_dir)
     File.binwrite(certificate_path, Base64.decode64(ENV.fetch("IOS_CERTIFICATE_P12_BASE64")))
     File.binwrite(profile_path, Base64.decode64(ENV.fetch("IOS_PROVISIONING_PROFILE_BASE64")))
+    UI.user_error!("Could not write #{certificate_path}") unless File.exist?(certificate_path)
+    UI.user_error!("Could not write #{profile_path}") unless File.exist?(profile_path)
 
     import_certificate(
       certificate_path: certificate_path,
