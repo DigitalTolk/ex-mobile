@@ -5,6 +5,7 @@ platform :ios do
   lane :testflight_pr do
     setup_ci
     install_ci_signing
+    set_ci_build_number
     build_app(
       workspace: "ios/App/App.xcworkspace",
       scheme: "App",
@@ -14,6 +15,7 @@ platform :ios do
     )
     upload_to_testflight(
       api_key: app_store_api_key,
+      changelog: "PR #{ENV['GITHUB_REF_NAME']} commit #{ENV['GITHUB_SHA']}",
       skip_waiting_for_build_processing: true
     )
   end
@@ -22,6 +24,7 @@ platform :ios do
   lane :app_store_release do
     setup_ci
     install_ci_signing
+    set_ci_build_number
     build_app(
       workspace: "ios/App/App.xcworkspace",
       scheme: "App",
@@ -70,5 +73,12 @@ platform :ios do
       keychain_password: ENV.fetch("MATCH_KEYCHAIN_PASSWORD", "ci-keychain-password")
     )
     install_provisioning_profile(path: profile_path)
+  end
+
+  private_lane :set_ci_build_number do
+    increment_build_number(
+      xcodeproj: "ios/App/App.xcodeproj",
+      build_number: ENV.fetch("GITHUB_RUN_NUMBER", Time.now.to_i.to_s)
+    )
   end
 end
