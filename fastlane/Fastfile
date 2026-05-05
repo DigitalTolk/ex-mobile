@@ -1,5 +1,7 @@
 default_platform(:ios)
 
+require "shellwords"
+
 def signing_dir
   File.expand_path("../build/ios/signing", __dir__)
 end
@@ -12,13 +14,55 @@ def signing_profile_path
   File.join(signing_dir, "profile.mobileprovision")
 end
 
+def signing_profile_plist_path
+  File.join(signing_dir, "profile.plist")
+end
+
 def signing_keychain_name
   "build.keychain"
+end
+
+def app_bundle_id
+  "com.digitaltolk.ex.mobile"
+end
+
+def provisioning_profile_value(key)
+  sh(
+    "/usr/bin/security cms -D -i #{signing_profile_path.shellescape} > #{signing_profile_plist_path.shellescape}",
+    log: false
+  )
+  sh(
+    "/usr/libexec/PlistBuddy -c #{("Print :" + key).shellescape} #{signing_profile_plist_path.shellescape}",
+    log: false
+  ).strip
+end
+
+def ci_code_signing_xcargs
+  Shellwords.join(
+    [
+      "CODE_SIGN_STYLE=Manual",
+      "CODE_SIGN_IDENTITY=Apple Distribution",
+      "DEVELOPMENT_TEAM=#{ENV.fetch("IOS_DEVELOPMENT_TEAM")}",
+      "PROVISIONING_PROFILE_SPECIFIER=#{ENV.fetch("IOS_PROVISIONING_PROFILE_NAME")}"
+    ]
+  )
+end
+
+def ci_export_options
+  {
+    method: "app-store",
+    signingStyle: "manual",
+    teamID: ENV.fetch("IOS_DEVELOPMENT_TEAM"),
+    provisioningProfiles: {
+      app_bundle_id => ENV.fetch("IOS_PROVISIONING_PROFILE_NAME")
+    }
+  }
 end
 
 def cleanup_ci_signing
   FileUtils.rm_f(signing_certificate_path)
   FileUtils.rm_f(signing_profile_path)
+  FileUtils.rm_f(signing_profile_plist_path)
   FileUtils.rm_rf(signing_dir)
   delete_keychain(name: signing_keychain_name) if File.exist?(File.expand_path("~/Library/Keychains/#{signing_keychain_name}-db"))
 end
@@ -33,6 +77,8 @@ platform :ios do
       project: "ios/App/App.xcodeproj",
       scheme: "App",
       export_method: "app-store",
+      xcargs: ci_code_signing_xcargs,
+      export_options: ci_export_options,
       output_directory: "build/ios",
       output_name: "ex-mobile.ipa"
     )
@@ -52,6 +98,8 @@ platform :ios do
       project: "ios/App/App.xcodeproj",
       scheme: "App",
       export_method: "app-store",
+      xcargs: ci_code_signing_xcargs,
+      export_options: ci_export_options,
       output_directory: "build/ios",
       output_name: "ex-mobile.ipa"
     )
@@ -95,6 +143,9 @@ platform :ios do
       keychain_password: ENV.fetch("MATCH_KEYCHAIN_PASSWORD", "ci-keychain-password")
     )
     install_provisioning_profile(path: signing_profile_path)
+
+    ENV["IOS_DEVELOPMENT_TEAM"] = provisioning_profile_value("TeamIdentifier:0")
+    ENV["IOS_PROVISIONING_PROFILE_NAME"] = provisioning_profile_value("Name")
   end
 
   private_lane :set_ci_build_number do
