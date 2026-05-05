@@ -21,7 +21,7 @@ export async function beginSSO(serverUrl: string): Promise<void> {
 
 export function tokenFromCallback(url: string): string | null {
   const parsed = new URL(url);
-  if (parsed.protocol !== 'ex:' || parsed.host !== 'mobile' || parsed.pathname !== '/auth/callback') {
+  if (parsed.protocol !== 'ex:' || parsed.host !== 'app' || parsed.pathname !== '/auth/callback') {
     return null;
   }
   return parsed.searchParams.get('token');

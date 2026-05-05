@@ -18,6 +18,6 @@ describe('url helpers', () => {
   });
 
   it('uses the allowlisted mobile callback URL', () => {
-    expect(authCallbackUrl()).toBe('ex://mobile/auth/callback');
+    expect(authCallbackUrl()).toBe('ex://app/auth/callback');
   });
 });

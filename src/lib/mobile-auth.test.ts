@@ -36,7 +36,7 @@ describe('mobile auth', () => {
 
   it('starts SSO with the ex app callback', () => {
     expect(authUrl('https://chat.example.com')).toBe(
-      'https://chat.example.com/auth/oidc/login?redirect_to=ex%3A%2F%2Fmobile%2Fauth%2Fcallback',
+      'https://chat.example.com/auth/oidc/login?redirect_to=ex%3A%2F%2Fapp%2Fauth%2Fcallback',
     );
   });
 
@@ -46,14 +46,14 @@ describe('mobile auth', () => {
     await beginSSO('https://chat.example.com');
 
     expect(mocks.browserOpen).toHaveBeenCalledWith({
-      url: 'https://chat.example.com/auth/oidc/login?redirect_to=ex%3A%2F%2Fmobile%2Fauth%2Fcallback',
+      url: 'https://chat.example.com/auth/oidc/login?redirect_to=ex%3A%2F%2Fapp%2Fauth%2Fcallback',
       presentationStyle: 'fullscreen',
     });
   });
 
   it('extracts tokens only from the expected callback route', () => {
-    expect(tokenFromCallback('ex://mobile/auth/callback?token=abc')).toBe('abc');
-    expect(tokenFromCallback('ex://mobile/other?token=abc')).toBeNull();
+    expect(tokenFromCallback('ex://app/auth/callback?token=abc')).toBe('abc');
+    expect(tokenFromCallback('ex://app/other?token=abc')).toBeNull();
     expect(tokenFromCallback('https://chat.example.com/auth/callback?token=abc')).toBeNull();
   });
 
@@ -81,7 +81,7 @@ describe('mobile auth', () => {
     handler({ url: 'https://example.com/nope?token=bad' });
     expect(onToken).not.toHaveBeenCalled();
 
-    handler({ url: 'ex://mobile/auth/callback?token=good' });
+    handler({ url: 'ex://app/auth/callback?token=good' });
     expect(mocks.browserClose).toHaveBeenCalledTimes(1);
     expect(onToken).toHaveBeenCalledWith('good');
   });
