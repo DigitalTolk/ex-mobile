@@ -26,6 +26,26 @@ def app_bundle_id
   "com.digitaltolk.ex.mobile"
 end
 
+def ios_project_path
+  "ios/App/App.xcodeproj"
+end
+
+def ci_build_number
+  date = Time.now.utc.strftime("%Y%m%d")
+  run_number = ENV["GITHUB_RUN_NUMBER"].to_s.strip
+  return "#{date}.#{run_number}" unless run_number.empty?
+
+  Time.now.utc.strftime("%Y%m%d.%H%M%S")
+end
+
+def release_version_from_tag
+  tag = ENV.fetch("GITHUB_REF_NAME", "")
+  match = tag.match(/\Av(\d+\.\d+\.\d+)\z/)
+  UI.user_error!("Release tags must use vN.N.N format, got #{tag.inspect}") unless match
+
+  match[1]
+end
+
 def provisioning_profile_value(key)
   sh(
     "/usr/bin/security cms -D -i #{signing_profile_path.shellescape} > #{signing_profile_plist_path.shellescape}",
@@ -74,7 +94,7 @@ platform :ios do
     install_ci_signing
     set_ci_build_number
     build_app(
-      project: "ios/App/App.xcodeproj",
+      project: ios_project_path,
       scheme: "App",
       export_method: "app-store",
       xcargs: ci_code_signing_xcargs,
@@ -93,9 +113,10 @@ platform :ios do
   lane :app_store_release do
     setup_ci
     install_ci_signing
+    set_release_marketing_version
     set_ci_build_number
     build_app(
-      project: "ios/App/App.xcodeproj",
+      project: ios_project_path,
       scheme: "App",
       export_method: "app-store",
       xcargs: ci_code_signing_xcargs,
@@ -150,8 +171,15 @@ platform :ios do
 
   private_lane :set_ci_build_number do
     increment_build_number(
-      xcodeproj: "ios/App/App.xcodeproj",
-      build_number: ENV.fetch("GITHUB_RUN_NUMBER", Time.now.to_i.to_s)
+      xcodeproj: ios_project_path,
+      build_number: ci_build_number
+    )
+  end
+
+  private_lane :set_release_marketing_version do
+    increment_version_number(
+      xcodeproj: ios_project_path,
+      version_number: release_version_from_tag
     )
   end
 

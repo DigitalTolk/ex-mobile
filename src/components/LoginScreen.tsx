@@ -1,4 +1,5 @@
-import { LogIn, Server, UserRound } from 'lucide-react';
+import { LogIn, Server } from 'lucide-react';
+import { BrandLogo } from './BrandLogo';
 import type { User } from '../types';
 
 interface LoginScreenProps {
@@ -21,10 +22,8 @@ export function LoginScreen({
   return (
     <main className="login-screen">
       <div className="login-panel">
-        <div className="avatar">
-          <UserRound size={34} />
-        </div>
-        <h1>{user ? `Welcome, ${user.displayName}` : 'Sign in to ex'}</h1>
+        <BrandLogo />
+        <h1>{user ? `Welcome, ${user.displayName}` : 'Sign in'}</h1>
         <p className="server-line">{serverUrl}</p>
         {error && <p className="form-error">{error}</p>}
         <button type="button" onClick={onLogin} disabled={busy}>

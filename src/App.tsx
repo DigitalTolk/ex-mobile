@@ -102,7 +102,7 @@ export default function App() {
     setView('setup');
   }
 
-  if (view === 'loading') return <main className="loading-screen">ex</main>;
+  if (view === 'loading') return <main className="loading-screen" aria-label="Loading" />;
   if (view === 'setup') return <SetupScreen initialUrl={serverUrl ?? ''} onSave={saveServer} />;
   if (view === 'login' || !accessToken || !user || !serverUrl) {
     return (

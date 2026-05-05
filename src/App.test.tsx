@@ -127,7 +127,7 @@ describe('App', () => {
 
     render(<App />);
 
-    expect(screen.getByText('ex')).toBeInTheDocument();
+    expect(screen.getByLabelText('Loading')).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: 'Setup' })).toBeInTheDocument();
     expect(SplashScreen.hide).toHaveBeenCalledTimes(1);
 

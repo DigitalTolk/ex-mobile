@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react';
-import { MessageCircle } from 'lucide-react';
+import { BrandLogo } from './BrandLogo';
 import { normalizeServerUrl } from '../lib/url';
 
 interface SetupScreenProps {
@@ -11,6 +11,12 @@ export function SetupScreen({ initialUrl = '', onSave }: SetupScreenProps) {
   const [value, setValue] = useState(initialUrl);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  function normalizeInputValue() {
+    const trimmed = value.trim();
+    if (!trimmed || /^https?:\/\//i.test(trimmed)) return;
+    setValue(`https://${trimmed}`);
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -27,10 +33,8 @@ export function SetupScreen({ initialUrl = '', onSave }: SetupScreenProps) {
 
   return (
     <main className="setup-screen">
-      <div className="setup-brand" aria-hidden="true">
-        <MessageCircle size={30} />
-      </div>
-      <h1>ex</h1>
+      <BrandLogo />
+      <h1>Connect to your chat server</h1>
       <form onSubmit={submit} className="setup-form">
         <label htmlFor="server-url">Chat server</label>
         <input
@@ -38,8 +42,9 @@ export function SetupScreen({ initialUrl = '', onSave }: SetupScreenProps) {
           inputMode="url"
           autoCapitalize="none"
           autoCorrect="off"
-          placeholder="https://chat.company.com"
+          placeholder="chat.company.com"
           value={value}
+          onBlur={normalizeInputValue}
           onChange={(event) => setValue(event.target.value)}
         />
         {error && <p className="form-error">{error}</p>}

@@ -13,9 +13,6 @@ const config: CapacitorConfig = {
       backgroundColor: '#231F20',
     },
   },
-  ios: {
-    scheme: 'ex',
-  },
   android: {
     buildOptions: {
       keystorePath: undefined,

@@ -9,6 +9,9 @@ describe('SetupScreen', () => {
     render(<SetupScreen onSave={onSave} />);
 
     await userEvent.type(screen.getByLabelText(/chat server/i), 'chat.example.com/');
+    await userEvent.tab();
+
+    expect(screen.getByLabelText(/chat server/i)).toHaveValue('https://chat.example.com/');
     await userEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     expect(onSave).toHaveBeenCalledWith('https://chat.example.com');
@@ -18,6 +21,8 @@ describe('SetupScreen', () => {
     const onSave = vi.fn().mockRejectedValue(new Error('Cannot reach server'));
     render(<SetupScreen initialUrl="https://old.example.com" onSave={onSave} />);
 
+    expect(screen.getByLabelText(/chat server/i)).toHaveValue('https://old.example.com');
+    await userEvent.tab();
     expect(screen.getByLabelText(/chat server/i)).toHaveValue('https://old.example.com');
     await userEvent.click(screen.getByRole('button', { name: /continue/i }));
 

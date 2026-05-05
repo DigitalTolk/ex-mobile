@@ -17,6 +17,7 @@ describe('LoginScreen', () => {
       />,
     );
 
+    expect(screen.getByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /sign in with sso/i }));
 
     expect(onLogin).toHaveBeenCalledTimes(1);
