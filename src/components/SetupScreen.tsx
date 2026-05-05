@@ -1,5 +1,4 @@
 import { FormEvent, useState } from 'react';
-import { BrandLogo } from './BrandLogo';
 import { normalizeServerUrl } from '../lib/url';
 
 interface SetupScreenProps {
@@ -33,12 +32,12 @@ export function SetupScreen({ initialUrl = '', onSave }: SetupScreenProps) {
 
   return (
     <main className="setup-screen">
-      <BrandLogo />
+      <img className="brand-logo" src="/logo.svg" alt="DigitalTolk chat" />
       <h1>Connect to your chat server</h1>
       <form onSubmit={submit} className="setup-form">
-        <label htmlFor="server-url">Chat server</label>
         <input
           id="server-url"
+          aria-label="Chat server"
           inputMode="url"
           autoCapitalize="none"
           autoCorrect="off"

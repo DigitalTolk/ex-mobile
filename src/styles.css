@@ -3,7 +3,6 @@
   --dt-white: #fff;
   --dt-blush: #de5d83;
   --dt-gray: #f6f5f4;
-  --logo-dot-color: var(--dt-black);
   color: #231f20;
   background: #f6f5f4;
   font-family:
@@ -71,7 +70,6 @@ button:disabled {
 .brand-logo {
   width: 72px;
   height: 72px;
-  color: #231f20;
   display: block;
 }
 

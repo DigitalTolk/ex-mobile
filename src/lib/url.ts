@@ -15,5 +15,5 @@ export function apiUrl(serverUrl: string, path: string): string {
 }
 
 export function authCallbackUrl(): string {
-  return 'ex://app/auth/callback';
+  return 'ex://mobile/auth/callback';
 }
