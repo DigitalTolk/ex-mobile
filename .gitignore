@@ -22,6 +22,7 @@ pnpm-debug.log*
 
 # OS and editor state
 .DS_Store
+AGENTS.md
 .idea/
 .vscode/
 *.swp
