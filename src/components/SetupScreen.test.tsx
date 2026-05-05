@@ -23,4 +23,13 @@ describe('SetupScreen', () => {
 
     expect(await screen.findByText('Cannot reach server')).toBeInTheDocument();
   });
+
+  it('uses a generic save error for non-Error failures', async () => {
+    const onSave = vi.fn().mockRejectedValue('bad');
+    render(<SetupScreen initialUrl="chat.example.com" onSave={onSave} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /continue/i }));
+
+    expect(await screen.findByText('Enter a valid chat server URL.')).toBeInTheDocument();
+  });
 });

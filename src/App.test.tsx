@@ -158,6 +158,21 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'Setup' })).toBeInTheDocument();
   });
 
+  it('uses fallback login errors for non-Error failures', async () => {
+    vi.mocked(loadStoredSession).mockResolvedValue({
+      serverUrl: 'https://chat.example.com',
+      accessToken: null,
+      user: null,
+    });
+    vi.mocked(beginSSO).mockRejectedValue('blocked');
+
+    render(<App />);
+
+    await screen.findByRole('heading', { name: 'Login https://chat.example.com' });
+    await userEvent.click(screen.getByRole('button', { name: 'Login now' }));
+    expect(await screen.findByText('Unable to open SSO.')).toBeInTheDocument();
+  });
+
   it('restores chat, logs out, and changes server', async () => {
     vi.mocked(loadStoredSession).mockResolvedValue({
       serverUrl: 'https://chat.example.com',
@@ -208,5 +223,19 @@ describe('App', () => {
     authCallback?.('bad-token');
 
     expect(await screen.findByText('Unable to finish sign in.')).toBeInTheDocument();
+  });
+
+  it('removes the deep-link listener on unmount', async () => {
+    vi.mocked(loadStoredSession).mockResolvedValue({
+      serverUrl: 'https://chat.example.com',
+      accessToken: null,
+      user: null,
+    });
+
+    const { unmount } = render(<App />);
+    await screen.findByRole('heading', { name: 'Login https://chat.example.com' });
+
+    unmount();
+    await waitFor(() => expect(removeListener).toHaveBeenCalled());
   });
 });
