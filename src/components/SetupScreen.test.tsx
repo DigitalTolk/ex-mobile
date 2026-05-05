@@ -13,4 +13,14 @@ describe('SetupScreen', () => {
 
     expect(onSave).toHaveBeenCalledWith('https://chat.example.com');
   });
+
+  it('shows save errors and supports an initial URL', async () => {
+    const onSave = vi.fn().mockRejectedValue(new Error('Cannot reach server'));
+    render(<SetupScreen initialUrl="https://old.example.com" onSave={onSave} />);
+
+    expect(screen.getByLabelText(/chat server/i)).toHaveValue('https://old.example.com');
+    await userEvent.click(screen.getByRole('button', { name: /continue/i }));
+
+    expect(await screen.findByText('Cannot reach server')).toBeInTheDocument();
+  });
 });
