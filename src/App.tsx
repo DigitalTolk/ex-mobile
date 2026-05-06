@@ -58,7 +58,7 @@ export default function App() {
   if (view === 'setup') return <SetupScreen initialUrl={serverUrl ?? ''} onSave={saveServer} />;
   return (
     <main className="loading-screen" aria-label="Opening server">
-      <button type="button" className="link-button" onClick={() => void changeServer()}>
+      <button type="button" className="top-left-button link-button" onClick={() => void changeServer()}>
         Change server
       </button>
     </main>

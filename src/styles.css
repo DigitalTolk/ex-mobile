@@ -51,6 +51,12 @@ button:disabled {
   border: 1px solid rgb(255 255 255 / 0.45);
 }
 
+.top-left-button {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left));
+}
+
 .loading-screen,
 .setup-screen,
 .login-screen {

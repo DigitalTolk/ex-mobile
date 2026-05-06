@@ -8,7 +8,8 @@ public class ServerNavigation: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticationP
     public let identifier = "ServerNavigation"
     public let jsName = "ServerNavigation"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "open", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "open", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "resetServer", returnType: CAPPluginReturnPromise)
     ]
 
     private var authSession: ASWebAuthenticationSession?
@@ -26,6 +27,16 @@ public class ServerNavigation: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticationP
 
         DispatchQueue.main.async { [weak self] in
             self?.webView?.load(URLRequest(url: url))
+            call.resolve()
+        }
+    }
+
+    @objc func resetServer(_ call: CAPPluginCall) {
+        DispatchQueue.main.async { [weak self] in
+            UserDefaults.standard.removeObject(forKey: "CapacitorStorage.server-url")
+            if let localURL = self?.bridge?.config.localURL {
+                self?.webView?.load(URLRequest(url: localURL))
+            }
             call.resolve()
         }
     }

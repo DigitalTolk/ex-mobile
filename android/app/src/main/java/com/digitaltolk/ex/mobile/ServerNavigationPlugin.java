@@ -34,6 +34,22 @@ public class ServerNavigationPlugin extends Plugin {
         });
     }
 
+    @PluginMethod
+    public void resetServer(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            getContext()
+                .getSharedPreferences(STORAGE_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .remove(SERVER_URL_KEY)
+                .apply();
+            String localURL = getBridge().getLocalUrl();
+            if (localURL != null) {
+                getBridge().getWebView().loadUrl(localURL);
+            }
+            call.resolve(new JSObject());
+        });
+    }
+
     @Override
     public Boolean shouldOverrideLoad(Uri url) {
         if (url == null) {

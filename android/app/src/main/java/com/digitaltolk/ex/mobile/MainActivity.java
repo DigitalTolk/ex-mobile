@@ -10,6 +10,10 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(ServerNavigationPlugin.class);
         super.onCreate(savedInstanceState);
+        if (getBridge() != null && getBridge().getWebView() != null) {
+            getBridge().getWebView().setLongClickable(false);
+            getBridge().getWebView().setOnLongClickListener(view -> true);
+        }
     }
 
     @Override

@@ -7,6 +7,9 @@ const config: CapacitorConfig = {
   server: {
     allowNavigation: ['*'],
   },
+  ios: {
+    allowsLinkPreview: false,
+  },
   plugins: {
     SplashScreen: {
       launchAutoHide: true,
