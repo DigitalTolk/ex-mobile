@@ -6,6 +6,18 @@ def signing_dir
   File.expand_path("../build/ios/signing", __dir__)
 end
 
+def release_metadata_dir
+  File.expand_path("../build/ios/metadata", __dir__)
+end
+
+def release_support_url
+  "https://www.digitaltolk.se/en/contact"
+end
+
+def release_copyright
+  "#{Time.now.utc.year} Digital Interpretations Scandinavia AB"
+end
+
 def signing_certificate_path
   File.join(signing_dir, "certificate.p12")
 end
@@ -28,6 +40,14 @@ end
 
 def ios_project_path
   "ios/App/App.xcodeproj"
+end
+
+def assert_iphone_only
+  project_file = File.expand_path("../#{ios_project_path}/project.pbxproj", __dir__)
+  content = File.read(project_file)
+  if content.match?(/TARGETED_DEVICE_FAMILY = "?1,2"?;/)
+    UI.user_error!("App target supports iPad. Set TARGETED_DEVICE_FAMILY to 1 to avoid required iPad screenshots.")
+  end
 end
 
 def ci_build_number
@@ -88,13 +108,24 @@ def cleanup_ci_signing
   FileUtils.rm_f(signing_profile_path)
   FileUtils.rm_f(signing_profile_plist_path)
   FileUtils.rm_rf(signing_dir)
+  FileUtils.rm_rf(release_metadata_dir)
   delete_keychain(name: signing_keychain_name) if File.exist?(File.expand_path("~/Library/Keychains/#{signing_keychain_name}-db"))
+end
+
+def prepare_release_metadata
+  en_us_dir = File.join(release_metadata_dir, "en-US")
+
+  FileUtils.rm_rf(release_metadata_dir)
+  FileUtils.mkdir_p(en_us_dir)
+  File.write(File.join(release_metadata_dir, "copyright.txt"), release_copyright)
+  File.write(File.join(en_us_dir, "support_url.txt"), release_support_url)
 end
 
 platform :ios do
   desc "Upload a PR build to TestFlight"
   lane :testflight_pr do
     setup_ci
+    assert_iphone_only
     install_ci_signing
     set_pr_marketing_version
     set_ci_build_number
@@ -117,9 +148,11 @@ platform :ios do
   desc "Upload a tagged build to App Store Connect"
   lane :app_store_release do
     setup_ci
+    assert_iphone_only
     install_ci_signing
     set_release_marketing_version
     set_ci_build_number
+    prepare_release_metadata
     build_app(
       project: ios_project_path,
       scheme: "App",
@@ -131,7 +164,9 @@ platform :ios do
     )
     upload_to_app_store(
       api_key: app_store_api_key,
-      skip_metadata: true,
+      metadata_path: release_metadata_dir,
+      copyright: release_copyright,
+      skip_metadata: false,
       skip_screenshots: true,
       precheck_include_in_app_purchases: false,
       submit_for_review: false
