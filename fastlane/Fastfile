@@ -43,7 +43,7 @@ def ios_project_path
 end
 
 def assert_iphone_only
-  project_file = File.join(ios_project_path, "project.pbxproj")
+  project_file = File.expand_path("../#{ios_project_path}/project.pbxproj", __dir__)
   content = File.read(project_file)
   if content.match?(/TARGETED_DEVICE_FAMILY = "?1,2"?;/)
     UI.user_error!("App target supports iPad. Set TARGETED_DEVICE_FAMILY to 1 to avoid required iPad screenshots.")
