@@ -47,7 +47,7 @@ def release_version_from_tag
 end
 
 def pr_marketing_version
-  "0.#{Time.now.utc.strftime("%Y%m%d")}.0"
+  "0.0.0"
 end
 
 def provisioning_profile_value(key)
@@ -133,6 +133,7 @@ platform :ios do
       api_key: app_store_api_key,
       skip_metadata: true,
       skip_screenshots: true,
+      precheck_include_in_app_purchases: false,
       submit_for_review: false
     )
   end
