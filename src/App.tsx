@@ -4,7 +4,7 @@ import { ChatShell } from './components/ChatShell';
 import { LoginScreen } from './components/LoginScreen';
 import { SetupScreen } from './components/SetupScreen';
 import { clearAuth, loadStoredSession, resetSession, storeAuth, storeServerUrl } from './lib/session';
-import { beginSSO, completeMobileAuth, listenForAuthCallback } from './lib/mobile-auth';
+import { beginSSO, completeMobileAuth, launchAuthToken, listenForAuthCallback } from './lib/mobile-auth';
 import type { User } from './types';
 
 type View = 'loading' | 'setup' | 'login' | 'chat';
@@ -16,6 +16,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingAuthToken, setPendingAuthToken] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -37,7 +38,11 @@ export default function App() {
 
   const finishAuth = useCallback(
     async (token: string) => {
-      if (!serverUrl) return;
+      if (!serverUrl) {
+        setPendingAuthToken(token);
+        return;
+      }
+      setPendingAuthToken(null);
       setBusy(true);
       setError(null);
       try {
@@ -67,6 +72,25 @@ export default function App() {
       void handle?.remove();
     };
   }, [finishAuth]);
+
+  useEffect(() => {
+    let cancelled = false;
+    launchAuthToken()
+      .then((token) => {
+        if (!cancelled && token) {
+          void finishAuth(token);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [finishAuth]);
+
+  useEffect(() => {
+    if (!serverUrl || !pendingAuthToken) return;
+    void finishAuth(pendingAuthToken);
+  }, [finishAuth, pendingAuthToken, serverUrl]);
 
   async function saveServer(nextServerUrl: string) {
     await storeServerUrl(nextServerUrl);

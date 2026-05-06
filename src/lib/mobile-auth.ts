@@ -27,6 +27,16 @@ export function tokenFromCallback(url: string): string | null {
   return parsed.searchParams.get('token');
 }
 
+export async function launchAuthToken(): Promise<string | null> {
+  const launch = await App.getLaunchUrl();
+  if (!launch?.url) return null;
+  const token = tokenFromCallback(launch.url);
+  if (token) {
+    void Browser.close();
+  }
+  return token;
+}
+
 export async function completeMobileAuth(serverUrl: string, token: string): Promise<MobileAuthResult> {
   const user = await apiFetch<User>(serverUrl, token, '/api/v1/users/me');
   return { token, user };

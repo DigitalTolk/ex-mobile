@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { User } from '../types';
 import { apiFetch } from './api';
-import { authUrl, beginSSO, completeMobileAuth, listenForAuthCallback, tokenFromCallback } from './mobile-auth';
+import { authUrl, beginSSO, completeMobileAuth, launchAuthToken, listenForAuthCallback, tokenFromCallback } from './mobile-auth';
 
 const mocks = vi.hoisted(() => ({
   browserOpen: vi.fn(),
   browserClose: vi.fn(),
   addListener: vi.fn(),
+  getLaunchUrl: vi.fn(),
 }));
 
 vi.mock('@capacitor/browser', () => ({
@@ -19,6 +20,7 @@ vi.mock('@capacitor/browser', () => ({
 vi.mock('@capacitor/app', () => ({
   App: {
     addListener: mocks.addListener,
+    getLaunchUrl: mocks.getLaunchUrl,
   },
 }));
 
@@ -31,6 +33,7 @@ describe('mobile auth', () => {
     mocks.browserOpen.mockReset();
     mocks.browserClose.mockReset();
     mocks.addListener.mockReset();
+    mocks.getLaunchUrl.mockReset();
     vi.mocked(apiFetch).mockReset();
   });
 
@@ -84,5 +87,19 @@ describe('mobile auth', () => {
     handler({ url: 'ex://app/auth/callback?token=good' });
     expect(mocks.browserClose).toHaveBeenCalledTimes(1);
     expect(onToken).toHaveBeenCalledWith('good');
+  });
+
+  it('extracts an auth token from a cold launch URL', async () => {
+    mocks.getLaunchUrl.mockResolvedValue({ url: 'ex://app/auth/callback?token=launch-token' });
+
+    await expect(launchAuthToken()).resolves.toBe('launch-token');
+    expect(mocks.browserClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores unrelated cold launch URLs', async () => {
+    mocks.getLaunchUrl.mockResolvedValue({ url: 'https://example.com/nope?token=bad' });
+
+    await expect(launchAuthToken()).resolves.toBeNull();
+    expect(mocks.browserClose).not.toHaveBeenCalled();
   });
 });

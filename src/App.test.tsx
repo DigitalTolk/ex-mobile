@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { User } from './types';
 import App from './App';
-import { beginSSO, completeMobileAuth, listenForAuthCallback } from './lib/mobile-auth';
+import { beginSSO, completeMobileAuth, launchAuthToken, listenForAuthCallback } from './lib/mobile-auth';
 import { clearAuth, loadStoredSession, resetSession, storeAuth, storeServerUrl } from './lib/session';
 import { SplashScreen } from '@capacitor/splash-screen';
 
@@ -30,6 +30,7 @@ vi.mock('./lib/session', () => ({
 vi.mock('./lib/mobile-auth', () => ({
   beginSSO: vi.fn(),
   completeMobileAuth: vi.fn(),
+  launchAuthToken: vi.fn(),
   listenForAuthCallback: vi.fn(),
 }));
 
@@ -113,6 +114,7 @@ describe('App', () => {
     vi.mocked(resetSession).mockReset().mockResolvedValue(undefined);
     vi.mocked(beginSSO).mockReset();
     vi.mocked(completeMobileAuth).mockReset();
+    vi.mocked(launchAuthToken).mockReset().mockResolvedValue(null);
     vi.mocked(listenForAuthCallback).mockReset().mockImplementation(async (handler) => {
       authCallback = handler;
       return { remove: removeListener };
@@ -224,8 +226,9 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'Chat https://chat.example.com token-2 Me' })).toBeInTheDocument();
   });
 
-  it('ignores auth callbacks before a server is configured', async () => {
+  it('keeps auth callbacks until a server is configured', async () => {
     vi.mocked(loadStoredSession).mockResolvedValue({ serverUrl: null, accessToken: null, user: null });
+    vi.mocked(completeMobileAuth).mockResolvedValue({ token: 'token-without-server', user });
 
     render(<App />);
 
@@ -234,6 +237,26 @@ describe('App', () => {
 
     await waitFor(() => expect(completeMobileAuth).not.toHaveBeenCalled());
     expect(screen.getByRole('heading', { name: 'Setup' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save server' }));
+
+    await waitFor(() => expect(completeMobileAuth).toHaveBeenCalledWith('https://chat.example.com', 'token-without-server'));
+    expect(await screen.findByRole('heading', { name: 'Chat https://chat.example.com token-without-server Me' })).toBeInTheDocument();
+  });
+
+  it('finishes auth from a cold launch URL after session restore', async () => {
+    vi.mocked(loadStoredSession).mockResolvedValue({
+      serverUrl: 'https://chat.example.com',
+      accessToken: null,
+      user: null,
+    });
+    vi.mocked(launchAuthToken).mockResolvedValue('launch-token');
+    vi.mocked(completeMobileAuth).mockResolvedValue({ token: 'launch-token', user });
+
+    render(<App />);
+
+    await waitFor(() => expect(completeMobileAuth).toHaveBeenCalledWith('https://chat.example.com', 'launch-token'));
+    expect(await screen.findByRole('heading', { name: 'Chat https://chat.example.com launch-token Me' })).toBeInTheDocument();
   });
 
   it('shows callback failures on the login screen', async () => {
