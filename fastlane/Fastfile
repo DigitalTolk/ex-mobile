@@ -42,6 +42,14 @@ def ios_project_path
   "ios/App/App.xcodeproj"
 end
 
+def assert_iphone_only
+  project_file = File.join(ios_project_path, "project.pbxproj")
+  content = File.read(project_file)
+  if content.match?(/TARGETED_DEVICE_FAMILY = "?1,2"?;/)
+    UI.user_error!("App target supports iPad. Set TARGETED_DEVICE_FAMILY to 1 to avoid required iPad screenshots.")
+  end
+end
+
 def ci_build_number
   date = Time.now.utc.strftime("%Y%m%d")
   run_number = ENV["GITHUB_RUN_NUMBER"].to_s.strip
@@ -117,6 +125,7 @@ platform :ios do
   desc "Upload a PR build to TestFlight"
   lane :testflight_pr do
     setup_ci
+    assert_iphone_only
     install_ci_signing
     set_pr_marketing_version
     set_ci_build_number
@@ -139,6 +148,7 @@ platform :ios do
   desc "Upload a tagged build to App Store Connect"
   lane :app_store_release do
     setup_ci
+    assert_iphone_only
     install_ci_signing
     set_release_marketing_version
     set_ci_build_number
