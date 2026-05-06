@@ -169,6 +169,7 @@ platform :ios do
       skip_metadata: false,
       skip_screenshots: true,
       precheck_include_in_app_purchases: false,
+      force: true,
       submit_for_review: false
     )
   end
