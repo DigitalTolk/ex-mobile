@@ -4,10 +4,10 @@ const config: CapacitorConfig = {
   appId: 'com.digitaltolk.ex.mobile',
   appName: 'ex',
   webDir: 'dist',
+  server: {
+    allowNavigation: ['*'],
+  },
   plugins: {
-    App: {
-      appUrlOpen: true,
-    },
     SplashScreen: {
       launchAutoHide: true,
       backgroundColor: '#231F20',

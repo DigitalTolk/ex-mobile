@@ -45,6 +45,12 @@ button:disabled {
   opacity: 0.55;
 }
 
+.link-button {
+  color: #fff;
+  background: transparent;
+  border: 1px solid rgb(255 255 255 / 0.45);
+}
+
 .loading-screen,
 .setup-screen,
 .login-screen {

@@ -1,152 +1,66 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { SplashScreen } from '@capacitor/splash-screen';
-import { ChatShell } from './components/ChatShell';
-import { LoginScreen } from './components/LoginScreen';
 import { SetupScreen } from './components/SetupScreen';
-import { clearAuth, loadStoredSession, resetSession, storeAuth, storeServerUrl } from './lib/session';
-import { beginSSO, completeMobileAuth, launchAuthToken, listenForAuthCallback } from './lib/mobile-auth';
-import type { User } from './types';
+import { navigateToServer } from './lib/navigation';
+import { loadStoredSession, resetSession, storeServerUrl } from './lib/session';
 
-type View = 'loading' | 'setup' | 'login' | 'chat';
+type View = 'loading' | 'setup' | 'redirecting';
+const STORED_SERVER_REDIRECT_DELAY_MS = 750;
 
 export default function App() {
   const [view, setView] = useState<View>('loading');
   const [serverUrl, setServerUrl] = useState<string | null>(null);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [user, setUser] = useState<User | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [pendingAuthToken, setPendingAuthToken] = useState<string | null>(null);
+  const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     loadStoredSession()
       .then((stored) => {
         if (cancelled) return;
-        setServerUrl(stored.serverUrl);
-        setAccessToken(stored.accessToken);
-        setUser(stored.user);
-        setView(stored.serverUrl ? (stored.accessToken && stored.user ? 'chat' : 'login') : 'setup');
+        const storedServerUrl = stored.serverUrl;
+        setServerUrl(storedServerUrl);
+        if (storedServerUrl) {
+          setView('redirecting');
+          redirectTimerRef.current = setTimeout(() => {
+            void navigateToServer(storedServerUrl);
+          }, STORED_SERVER_REDIRECT_DELAY_MS);
+          return;
+        }
+        setView('setup');
       })
       .finally(() => {
         void SplashScreen.hide();
       });
     return () => {
       cancelled = true;
+      if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
     };
   }, []);
-
-  const finishAuth = useCallback(
-    async (token: string) => {
-      if (!serverUrl) {
-        setPendingAuthToken(token);
-        return;
-      }
-      setPendingAuthToken(null);
-      setBusy(true);
-      setError(null);
-      try {
-        const result = await completeMobileAuth(serverUrl, token);
-        await storeAuth(result.token, result.user);
-        setAccessToken(result.token);
-        setUser(result.user);
-        setView('chat');
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unable to finish sign in.');
-        setView('login');
-      } finally {
-        setBusy(false);
-      }
-    },
-    [serverUrl],
-  );
-
-  useEffect(() => {
-    let handle: { remove: () => Promise<void> } | null = null;
-    listenForAuthCallback((token) => {
-      void finishAuth(token);
-    }).then((next) => {
-      handle = next;
-    });
-    return () => {
-      void handle?.remove();
-    };
-  }, [finishAuth]);
-
-  useEffect(() => {
-    let cancelled = false;
-    launchAuthToken()
-      .then((token) => {
-        if (!cancelled && token) {
-          void finishAuth(token);
-        }
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [finishAuth]);
-
-  useEffect(() => {
-    if (!serverUrl || !pendingAuthToken) return;
-    void finishAuth(pendingAuthToken);
-  }, [finishAuth, pendingAuthToken, serverUrl]);
 
   async function saveServer(nextServerUrl: string) {
     await storeServerUrl(nextServerUrl);
     setServerUrl(nextServerUrl);
-    setView('login');
-  }
-
-  async function login() {
-    if (!serverUrl) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await beginSSO(serverUrl);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to open SSO.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function logout() {
-    await clearAuth();
-    setAccessToken(null);
-    setUser(null);
-    setView('login');
+    setView('redirecting');
+    await navigateToServer(nextServerUrl);
   }
 
   async function changeServer() {
+    if (redirectTimerRef.current) {
+      clearTimeout(redirectTimerRef.current);
+      redirectTimerRef.current = null;
+    }
     await resetSession();
     setServerUrl(null);
-    setAccessToken(null);
-    setUser(null);
     setView('setup');
   }
 
   if (view === 'loading') return <main className="loading-screen" aria-label="Loading" />;
   if (view === 'setup') return <SetupScreen initialUrl={serverUrl ?? ''} onSave={saveServer} />;
-  if (view === 'login' || !accessToken || !user || !serverUrl) {
-    return (
-      <LoginScreen
-        serverUrl={serverUrl ?? ''}
-        user={user}
-        busy={busy}
-        error={error}
-        onLogin={login}
-        onChangeServer={changeServer}
-      />
-    );
-  }
   return (
-    <ChatShell
-      serverUrl={serverUrl}
-      accessToken={accessToken}
-      user={user}
-      onLogout={logout}
-      onChangeServer={changeServer}
-    />
+    <main className="loading-screen" aria-label="Opening server">
+      <button type="button" className="link-button" onClick={() => void changeServer()}>
+        Change server
+      </button>
+    </main>
   );
 }

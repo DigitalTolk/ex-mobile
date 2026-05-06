@@ -1,17 +1,10 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { User } from './types';
-import App from './App';
-import { beginSSO, completeMobileAuth, launchAuthToken, listenForAuthCallback } from './lib/mobile-auth';
-import { clearAuth, loadStoredSession, resetSession, storeAuth, storeServerUrl } from './lib/session';
 import { SplashScreen } from '@capacitor/splash-screen';
-
-const user: User = {
-  id: 'u-1',
-  email: 'me@example.com',
-  displayName: 'Me',
-};
+import App from './App';
+import { navigateToServer } from './lib/navigation';
+import { loadStoredSession, resetSession, storeServerUrl } from './lib/session';
 
 vi.mock('@capacitor/splash-screen', () => ({
   SplashScreen: {
@@ -19,19 +12,14 @@ vi.mock('@capacitor/splash-screen', () => ({
   },
 }));
 
-vi.mock('./lib/session', () => ({
-  loadStoredSession: vi.fn(),
-  storeServerUrl: vi.fn(),
-  storeAuth: vi.fn(),
-  clearAuth: vi.fn(),
-  resetSession: vi.fn(),
+vi.mock('./lib/navigation', () => ({
+  navigateToServer: vi.fn(),
 }));
 
-vi.mock('./lib/mobile-auth', () => ({
-  beginSSO: vi.fn(),
-  completeMobileAuth: vi.fn(),
-  launchAuthToken: vi.fn(),
-  listenForAuthCallback: vi.fn(),
+vi.mock('./lib/session', () => ({
+  loadStoredSession: vi.fn(),
+  resetSession: vi.fn(),
+  storeServerUrl: vi.fn(),
 }));
 
 vi.mock('./components/SetupScreen', () => ({
@@ -45,100 +33,69 @@ vi.mock('./components/SetupScreen', () => ({
   ),
 }));
 
-vi.mock('./components/LoginScreen', () => ({
-  LoginScreen: ({
-    serverUrl,
-    busy,
-    error,
-    onLogin,
-    onChangeServer,
-  }: {
-    serverUrl: string;
-    busy: boolean;
-    error: string | null;
-    onLogin: () => void;
-    onChangeServer: () => void;
-  }) => (
-    <section>
-      <h1>Login {serverUrl}</h1>
-      <span>busy:{String(busy)}</span>
-      {error && <p>{error}</p>}
-      <button type="button" onClick={onLogin}>
-        Login now
-      </button>
-      <button type="button" onClick={onChangeServer}>
-        Change server
-      </button>
-    </section>
-  ),
-}));
-
-vi.mock('./components/ChatShell', () => ({
-  ChatShell: ({
-    serverUrl,
-    accessToken,
-    user,
-    onLogout,
-    onChangeServer,
-  }: {
-    serverUrl: string;
-    accessToken: string;
-    user: User;
-    onLogout: () => void;
-    onChangeServer: () => void;
-  }) => (
-    <section>
-      <h1>
-        Chat {serverUrl} {accessToken} {user.displayName}
-      </h1>
-      <button type="button" onClick={onLogout}>
-        Logout now
-      </button>
-      <button type="button" onClick={onChangeServer}>
-        Change chat server
-      </button>
-    </section>
-  ),
-}));
-
 describe('App', () => {
-  let authCallback: ((token: string) => void) | null;
-  const removeListener = vi.fn();
-
   beforeEach(() => {
-    authCallback = null;
     vi.mocked(loadStoredSession).mockReset();
-    vi.mocked(storeServerUrl).mockReset().mockResolvedValue(undefined);
-    vi.mocked(storeAuth).mockReset().mockResolvedValue(undefined);
-    vi.mocked(clearAuth).mockReset().mockResolvedValue(undefined);
     vi.mocked(resetSession).mockReset().mockResolvedValue(undefined);
-    vi.mocked(beginSSO).mockReset();
-    vi.mocked(completeMobileAuth).mockReset();
-    vi.mocked(launchAuthToken).mockReset().mockResolvedValue(null);
-    vi.mocked(listenForAuthCallback).mockReset().mockImplementation(async (handler) => {
-      authCallback = handler;
-      return { remove: removeListener };
-    });
+    vi.mocked(storeServerUrl).mockReset().mockResolvedValue(undefined);
+    vi.mocked(navigateToServer).mockReset();
     vi.mocked(SplashScreen.hide).mockReset();
-    removeListener.mockReset();
+    vi.useRealTimers();
   });
 
-  it('loads empty state, saves a server, and opens SSO', async () => {
-    vi.mocked(loadStoredSession).mockResolvedValue({ serverUrl: null, accessToken: null, user: null });
-    vi.mocked(beginSSO).mockResolvedValue(undefined);
+  it('shows local setup when no server URL is stored', async () => {
+    vi.mocked(loadStoredSession).mockResolvedValue({ serverUrl: null });
 
     render(<App />);
 
     expect(screen.getByLabelText('Loading')).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: 'Setup' })).toBeInTheDocument();
+    expect(navigateToServer).not.toHaveBeenCalled();
     expect(SplashScreen.hide).toHaveBeenCalledTimes(1);
+  });
 
+  it('redirects the WebView when a server URL is already stored', async () => {
+    vi.mocked(loadStoredSession).mockResolvedValue({
+      serverUrl: 'https://chat.example.com',
+    });
+
+    render(<App />);
+
+    expect(await screen.findByLabelText('Opening server')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Change server' })).toBeInTheDocument();
+    expect(navigateToServer).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(navigateToServer).toHaveBeenCalledWith('https://chat.example.com'));
+    expect(SplashScreen.hide).toHaveBeenCalledTimes(1);
+  });
+
+  it('can return to setup before opening a stored server', async () => {
+    vi.mocked(loadStoredSession).mockResolvedValue({
+      serverUrl: 'https://bad.example.com',
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Change server' }));
+
+    expect(resetSession).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole('heading', { name: 'Setup' })).toBeInTheDocument();
+
+    await new Promise((resolve) => setTimeout(resolve, 850));
+    expect(navigateToServer).not.toHaveBeenCalled();
+  });
+
+  it('stores a server URL and redirects the WebView', async () => {
+    vi.mocked(loadStoredSession).mockResolvedValue({ serverUrl: null });
+
+    render(<App />);
+
+    await screen.findByRole('heading', { name: 'Setup' });
     await userEvent.click(screen.getByRole('button', { name: 'Save server' }));
-    expect(storeServerUrl).toHaveBeenCalledWith('https://chat.example.com');
-    expect(await screen.findByRole('heading', { name: 'Login https://chat.example.com' })).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Login now' }));
-    expect(beginSSO).toHaveBeenCalledWith('https://chat.example.com');
+    expect(storeServerUrl).toHaveBeenCalledWith('https://chat.example.com');
+    expect(navigateToServer).toHaveBeenCalledWith('https://chat.example.com');
+    expect(screen.getByLabelText('Opening server')).toBeInTheDocument();
   });
 
   it('keeps loading state when initialization is cancelled before session resolves', async () => {
@@ -151,157 +108,9 @@ describe('App', () => {
 
     const { unmount } = render(<App />);
     unmount();
-    resolveSession({ serverUrl: 'https://chat.example.com', accessToken: null, user: null });
+    resolveSession({ serverUrl: 'https://chat.example.com' });
 
     await waitFor(() => expect(SplashScreen.hide).toHaveBeenCalledTimes(1));
-  });
-
-  it('shows login errors and can reset the server', async () => {
-    vi.mocked(loadStoredSession).mockResolvedValue({
-      serverUrl: 'https://chat.example.com',
-      accessToken: null,
-      user: null,
-    });
-    vi.mocked(beginSSO).mockRejectedValue(new Error('browser blocked'));
-
-    render(<App />);
-
-    expect(await screen.findByRole('heading', { name: 'Login https://chat.example.com' })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Login now' }));
-    expect(await screen.findByText('browser blocked')).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole('button', { name: 'Change server' }));
-    expect(resetSession).toHaveBeenCalledTimes(1);
-    expect(await screen.findByRole('heading', { name: 'Setup' })).toBeInTheDocument();
-  });
-
-  it('uses fallback login errors for non-Error failures', async () => {
-    vi.mocked(loadStoredSession).mockResolvedValue({
-      serverUrl: 'https://chat.example.com',
-      accessToken: null,
-      user: null,
-    });
-    vi.mocked(beginSSO).mockRejectedValue('blocked');
-
-    render(<App />);
-
-    await screen.findByRole('heading', { name: 'Login https://chat.example.com' });
-    await userEvent.click(screen.getByRole('button', { name: 'Login now' }));
-    expect(await screen.findByText('Unable to open SSO.')).toBeInTheDocument();
-  });
-
-  it('restores chat, logs out, and changes server', async () => {
-    vi.mocked(loadStoredSession).mockResolvedValue({
-      serverUrl: 'https://chat.example.com',
-      accessToken: 'token-1',
-      user,
-    });
-
-    render(<App />);
-
-    expect(await screen.findByRole('heading', { name: 'Chat https://chat.example.com token-1 Me' })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Logout now' }));
-    expect(clearAuth).toHaveBeenCalledTimes(1);
-    expect(await screen.findByRole('heading', { name: 'Login https://chat.example.com' })).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole('button', { name: 'Change server' }));
-    expect(resetSession).toHaveBeenCalledTimes(1);
-    expect(await screen.findByRole('heading', { name: 'Setup' })).toBeInTheDocument();
-  });
-
-  it('finishes auth from the deep-link callback', async () => {
-    vi.mocked(loadStoredSession).mockResolvedValue({
-      serverUrl: 'https://chat.example.com',
-      accessToken: null,
-      user: null,
-    });
-    vi.mocked(completeMobileAuth).mockResolvedValue({ token: 'token-2', user });
-
-    render(<App />);
-
-    await screen.findByRole('heading', { name: 'Login https://chat.example.com' });
-    authCallback?.('token-2');
-
-    await waitFor(() => expect(storeAuth).toHaveBeenCalledWith('token-2', user));
-    expect(await screen.findByRole('heading', { name: 'Chat https://chat.example.com token-2 Me' })).toBeInTheDocument();
-  });
-
-  it('keeps auth callbacks until a server is configured', async () => {
-    vi.mocked(loadStoredSession).mockResolvedValue({ serverUrl: null, accessToken: null, user: null });
-    vi.mocked(completeMobileAuth).mockResolvedValue({ token: 'token-without-server', user });
-
-    render(<App />);
-
-    await screen.findByRole('heading', { name: 'Setup' });
-    authCallback?.('token-without-server');
-
-    await waitFor(() => expect(completeMobileAuth).not.toHaveBeenCalled());
-    expect(screen.getByRole('heading', { name: 'Setup' })).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole('button', { name: 'Save server' }));
-
-    await waitFor(() => expect(completeMobileAuth).toHaveBeenCalledWith('https://chat.example.com', 'token-without-server'));
-    expect(await screen.findByRole('heading', { name: 'Chat https://chat.example.com token-without-server Me' })).toBeInTheDocument();
-  });
-
-  it('finishes auth from a cold launch URL after session restore', async () => {
-    vi.mocked(loadStoredSession).mockResolvedValue({
-      serverUrl: 'https://chat.example.com',
-      accessToken: null,
-      user: null,
-    });
-    vi.mocked(launchAuthToken).mockResolvedValue('launch-token');
-    vi.mocked(completeMobileAuth).mockResolvedValue({ token: 'launch-token', user });
-
-    render(<App />);
-
-    await waitFor(() => expect(completeMobileAuth).toHaveBeenCalledWith('https://chat.example.com', 'launch-token'));
-    expect(await screen.findByRole('heading', { name: 'Chat https://chat.example.com launch-token Me' })).toBeInTheDocument();
-  });
-
-  it('shows callback failures on the login screen', async () => {
-    vi.mocked(loadStoredSession).mockResolvedValue({
-      serverUrl: 'https://chat.example.com',
-      accessToken: null,
-      user: null,
-    });
-    vi.mocked(completeMobileAuth).mockRejectedValue('nope');
-
-    render(<App />);
-
-    await screen.findByRole('heading', { name: 'Login https://chat.example.com' });
-    authCallback?.('bad-token');
-
-    expect(await screen.findByText('Unable to finish sign in.')).toBeInTheDocument();
-  });
-
-  it('shows callback Error messages on the login screen', async () => {
-    vi.mocked(loadStoredSession).mockResolvedValue({
-      serverUrl: 'https://chat.example.com',
-      accessToken: null,
-      user: null,
-    });
-    vi.mocked(completeMobileAuth).mockRejectedValue(new Error('token expired'));
-
-    render(<App />);
-
-    await screen.findByRole('heading', { name: 'Login https://chat.example.com' });
-    authCallback?.('bad-token');
-
-    expect(await screen.findByText('token expired')).toBeInTheDocument();
-  });
-
-  it('removes the deep-link listener on unmount', async () => {
-    vi.mocked(loadStoredSession).mockResolvedValue({
-      serverUrl: 'https://chat.example.com',
-      accessToken: null,
-      user: null,
-    });
-
-    const { unmount } = render(<App />);
-    await screen.findByRole('heading', { name: 'Login https://chat.example.com' });
-
-    unmount();
-    await waitFor(() => expect(removeListener).toHaveBeenCalled());
+    expect(navigateToServer).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { User } from '../types';
 
 const store = new Map<string, string>();
 
@@ -25,41 +24,20 @@ describe('session storage', () => {
 
     await expect(loadStoredSession()).resolves.toEqual({
       serverUrl: null,
-      accessToken: null,
-      user: null,
     });
   });
 
-  it('stores and clears server/auth state', async () => {
-    const { clearAuth, loadStoredSession, resetSession, storeAuth, storeServerUrl } = await import('./session');
-    const user: User = {
-      id: 'u-1',
-      email: 'me@example.com',
-      displayName: 'Me',
-    };
-
+  it('stores and clears server state', async () => {
+    const { loadStoredSession, resetSession, storeServerUrl } = await import('./session');
     await storeServerUrl('https://chat.example.com');
-    await storeAuth('token-1', user);
 
     await expect(loadStoredSession()).resolves.toEqual({
       serverUrl: 'https://chat.example.com',
-      accessToken: 'token-1',
-      user,
     });
 
-    await clearAuth();
-    await expect(loadStoredSession()).resolves.toMatchObject({
-      serverUrl: 'https://chat.example.com',
-      accessToken: null,
-      user: null,
-    });
-
-    await storeAuth('token-2', user);
     await resetSession();
     await expect(loadStoredSession()).resolves.toEqual({
       serverUrl: null,
-      accessToken: null,
-      user: null,
     });
   });
 });
