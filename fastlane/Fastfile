@@ -1,0 +1,205 @@
+default_platform(:ios)
+
+require "shellwords"
+
+def signing_dir
+  File.expand_path("../build/ios/signing", __dir__)
+end
+
+def signing_certificate_path
+  File.join(signing_dir, "certificate.p12")
+end
+
+def signing_profile_path
+  File.join(signing_dir, "profile.mobileprovision")
+end
+
+def signing_profile_plist_path
+  File.join(signing_dir, "profile.plist")
+end
+
+def signing_keychain_name
+  "build.keychain"
+end
+
+def app_bundle_id
+  "com.digitaltolk.ex.mobile"
+end
+
+def ios_project_path
+  "ios/App/App.xcodeproj"
+end
+
+def ci_build_number
+  date = Time.now.utc.strftime("%Y%m%d")
+  run_number = ENV["GITHUB_RUN_NUMBER"].to_s.strip
+  return "#{date}.#{run_number}" unless run_number.empty?
+
+  Time.now.utc.strftime("%Y%m%d.%H%M%S")
+end
+
+def release_version_from_tag
+  tag = ENV.fetch("GITHUB_REF_NAME", "")
+  match = tag.match(/\Av(\d+\.\d+\.\d+)\z/)
+  UI.user_error!("Release tags must use vN.N.N format, got #{tag.inspect}") unless match
+
+  match[1]
+end
+
+def pr_marketing_version
+  "0.#{Time.now.utc.strftime("%Y%m%d")}.0"
+end
+
+def provisioning_profile_value(key)
+  sh(
+    "/usr/bin/security cms -D -i #{signing_profile_path.shellescape} > #{signing_profile_plist_path.shellescape}",
+    log: false
+  )
+  sh(
+    "/usr/libexec/PlistBuddy -c #{("Print :" + key).shellescape} #{signing_profile_plist_path.shellescape}",
+    log: false
+  ).strip
+end
+
+def ci_code_signing_xcargs
+  Shellwords.join(
+    [
+      "CODE_SIGN_STYLE=Manual",
+      "CODE_SIGN_IDENTITY=Apple Distribution",
+      "DEVELOPMENT_TEAM=#{ENV.fetch("IOS_DEVELOPMENT_TEAM")}",
+      "PROVISIONING_PROFILE_SPECIFIER=#{ENV.fetch("IOS_PROVISIONING_PROFILE_NAME")}"
+    ]
+  )
+end
+
+def ci_export_options
+  {
+    method: "app-store",
+    signingStyle: "manual",
+    teamID: ENV.fetch("IOS_DEVELOPMENT_TEAM"),
+    provisioningProfiles: {
+      app_bundle_id => ENV.fetch("IOS_PROVISIONING_PROFILE_NAME")
+    }
+  }
+end
+
+def cleanup_ci_signing
+  FileUtils.rm_f(signing_certificate_path)
+  FileUtils.rm_f(signing_profile_path)
+  FileUtils.rm_f(signing_profile_plist_path)
+  FileUtils.rm_rf(signing_dir)
+  delete_keychain(name: signing_keychain_name) if File.exist?(File.expand_path("~/Library/Keychains/#{signing_keychain_name}-db"))
+end
+
+platform :ios do
+  desc "Upload a PR build to TestFlight"
+  lane :testflight_pr do
+    setup_ci
+    install_ci_signing
+    set_pr_marketing_version
+    set_ci_build_number
+    build_app(
+      project: ios_project_path,
+      scheme: "App",
+      export_method: "app-store",
+      xcargs: ci_code_signing_xcargs,
+      export_options: ci_export_options,
+      output_directory: "build/ios",
+      output_name: "ex-mobile.ipa"
+    )
+    upload_to_testflight(
+      api_key: app_store_api_key,
+      changelog: "PR #{ENV['GITHUB_REF_NAME']} commit #{ENV['GITHUB_SHA']}",
+      skip_waiting_for_build_processing: true
+    )
+  end
+
+  desc "Upload a tagged build to App Store Connect"
+  lane :app_store_release do
+    setup_ci
+    install_ci_signing
+    set_release_marketing_version
+    set_ci_build_number
+    build_app(
+      project: ios_project_path,
+      scheme: "App",
+      export_method: "app-store",
+      xcargs: ci_code_signing_xcargs,
+      export_options: ci_export_options,
+      output_directory: "build/ios",
+      output_name: "ex-mobile.ipa"
+    )
+    upload_to_app_store(
+      api_key: app_store_api_key,
+      skip_metadata: true,
+      skip_screenshots: true,
+      submit_for_review: false
+    )
+  end
+
+  private_lane :app_store_api_key do
+    app_store_connect_api_key(
+      key_id: ENV.fetch("APP_STORE_CONNECT_API_KEY_ID"),
+      issuer_id: ENV.fetch("APP_STORE_CONNECT_ISSUER_ID"),
+      key_content: ENV.fetch("APP_STORE_CONNECT_API_KEY"),
+      is_key_content_base64: true,
+      duration: 1200
+    )
+  end
+
+  private_lane :install_ci_signing do
+    create_keychain(
+      name: signing_keychain_name,
+      password: ENV.fetch("MATCH_KEYCHAIN_PASSWORD", "ci-keychain-password"),
+      default_keychain: true,
+      unlock: true,
+      timeout: 3600
+    )
+
+    FileUtils.mkdir_p(signing_dir)
+    File.binwrite(signing_certificate_path, Base64.decode64(ENV.fetch("IOS_CERTIFICATE_P12_BASE64")))
+    File.binwrite(signing_profile_path, Base64.decode64(ENV.fetch("IOS_PROVISIONING_PROFILE_BASE64")))
+    UI.user_error!("Could not write #{signing_certificate_path}") unless File.exist?(signing_certificate_path)
+    UI.user_error!("Could not write #{signing_profile_path}") unless File.exist?(signing_profile_path)
+
+    import_certificate(
+      certificate_path: signing_certificate_path,
+      certificate_password: ENV.fetch("IOS_CERTIFICATE_PASSWORD"),
+      keychain_name: signing_keychain_name,
+      keychain_password: ENV.fetch("MATCH_KEYCHAIN_PASSWORD", "ci-keychain-password")
+    )
+    install_provisioning_profile(path: signing_profile_path)
+
+    ENV["IOS_DEVELOPMENT_TEAM"] = provisioning_profile_value("TeamIdentifier:0")
+    ENV["IOS_PROVISIONING_PROFILE_NAME"] = provisioning_profile_value("Name")
+  end
+
+  private_lane :set_ci_build_number do
+    increment_build_number(
+      xcodeproj: ios_project_path,
+      build_number: ci_build_number
+    )
+  end
+
+  private_lane :set_release_marketing_version do
+    increment_version_number(
+      xcodeproj: ios_project_path,
+      version_number: release_version_from_tag
+    )
+  end
+
+  private_lane :set_pr_marketing_version do
+    increment_version_number(
+      xcodeproj: ios_project_path,
+      version_number: pr_marketing_version
+    )
+  end
+
+  after_all do
+    cleanup_ci_signing
+  end
+
+  error do
+    cleanup_ci_signing
+  end
+end

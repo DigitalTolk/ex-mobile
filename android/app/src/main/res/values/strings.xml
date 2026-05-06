@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ex</string>
+    <string name="title_activity_main">ex</string>
+    <string name="package_name">com.digitaltolk.ex.mobile</string>
+    <string name="custom_url_scheme">ex</string>
+</resources>
