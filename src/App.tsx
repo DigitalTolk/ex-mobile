@@ -4,6 +4,7 @@ import { SetupScreen } from './components/SetupScreen';
 import { navigateToServer } from './lib/navigation';
 import { clearNativeNotificationContext, enableNativeNotificationsForServer } from './lib/onesignal';
 import { loadStoredSession, resetSession, storeServerUrl } from './lib/session';
+import { isSameServerUrl } from './lib/url';
 
 type View = 'loading' | 'setup' | 'redirecting';
 const STORED_SERVER_REDIRECT_DELAY_MS = 750;
@@ -47,6 +48,22 @@ export default function App() {
     const timer = setTimeout(() => setShowServerRecovery(true), SERVER_RECOVERY_DELAY_MS);
     return () => clearTimeout(timer);
   }, [view]);
+
+  useEffect(() => {
+    function openNotificationUrl(event: Event) {
+      const url = (event as CustomEvent<{ url?: string }>).detail?.url;
+      if (!serverUrl || !url) return;
+
+      try {
+        if (isSameServerUrl(serverUrl, url)) void navigateToServer(url);
+      } catch {
+        return;
+      }
+    }
+
+    window.addEventListener('ex-mobile:notification-url', openNotificationUrl);
+    return () => window.removeEventListener('ex-mobile:notification-url', openNotificationUrl);
+  }, [serverUrl]);
 
   async function saveServer(nextServerUrl: string) {
     await storeServerUrl(nextServerUrl);

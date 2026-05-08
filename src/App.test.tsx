@@ -142,6 +142,66 @@ describe('App', () => {
     expect(screen.getByLabelText('Opening server')).toBeInTheDocument();
   });
 
+  it('routes notification clicks for the configured server', async () => {
+    vi.mocked(loadStoredSession).mockResolvedValue({
+      serverUrl: 'https://chat.example.com',
+    });
+
+    render(<App />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    window.dispatchEvent(
+      new CustomEvent('ex-mobile:notification-url', {
+        detail: { url: 'https://chat.example.com/channels/general' },
+      }),
+    );
+
+    expect(navigateToServer).toHaveBeenCalledWith('https://chat.example.com/channels/general');
+  });
+
+  it('ignores notification clicks outside the configured server', async () => {
+    vi.mocked(loadStoredSession).mockResolvedValue({
+      serverUrl: 'https://chat.example.com',
+    });
+
+    render(<App />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    window.dispatchEvent(
+      new CustomEvent('ex-mobile:notification-url', {
+        detail: { url: 'https://evil.example.com/channels/general' },
+      }),
+    );
+
+    expect(navigateToServer).not.toHaveBeenCalledWith('https://evil.example.com/channels/general');
+  });
+
+  it('ignores malformed notification click URLs', async () => {
+    vi.mocked(loadStoredSession).mockResolvedValue({
+      serverUrl: 'https://chat.example.com',
+    });
+
+    render(<App />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    window.dispatchEvent(
+      new CustomEvent('ex-mobile:notification-url', {
+        detail: { url: 'not a url' },
+      }),
+    );
+
+    expect(navigateToServer).not.toHaveBeenCalledWith('not a url');
+  });
+
   it('keeps loading state when initialization is cancelled before session resolves', async () => {
     let resolveSession!: (value: Awaited<ReturnType<typeof loadStoredSession>>) => void;
     vi.mocked(loadStoredSession).mockReturnValue(

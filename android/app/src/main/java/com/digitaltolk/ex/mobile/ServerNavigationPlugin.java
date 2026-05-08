@@ -82,7 +82,8 @@ public class ServerNavigationPlugin extends Plugin {
         }
 
         String code = callbackURL.getQueryParameter("desktop_code");
-        if (code == null || code.isEmpty()) {
+        String token = callbackURL.getQueryParameter("token");
+        if ((code == null || code.isEmpty()) && (token == null || token.isEmpty())) {
             return false;
         }
 
@@ -91,12 +92,18 @@ public class ServerNavigationPlugin extends Plugin {
             return false;
         }
 
-        Uri completionURL = serverURL.buildUpon()
-            .path("/auth/desktop/complete")
+        Uri callbackTargetURL = serverURL.buildUpon()
+            .path(code == null || code.isEmpty() ? "/oidc/callback" : "/auth/desktop/complete")
             .clearQuery()
-            .appendQueryParameter("code", code)
             .build();
-        bridge.getWebView().post(() -> bridge.getWebView().loadUrl(completionURL.toString()));
+        Uri.Builder callbackTargetBuilder = callbackTargetURL.buildUpon();
+        if (code == null || code.isEmpty()) {
+            callbackTargetBuilder.appendQueryParameter("token", token);
+        } else {
+            callbackTargetBuilder.appendQueryParameter("code", code);
+        }
+        Uri finalCallbackTargetURL = callbackTargetBuilder.build();
+        bridge.getWebView().post(() -> bridge.getWebView().loadUrl(finalCallbackTargetURL.toString()));
         return true;
     }
 
