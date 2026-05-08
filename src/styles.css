@@ -57,6 +57,12 @@ button:disabled {
   left: max(12px, env(safe-area-inset-left));
 }
 
+.loading-recovery-button {
+  position: fixed;
+  right: max(20px, env(safe-area-inset-right));
+  bottom: max(24px, env(safe-area-inset-bottom));
+}
+
 .loading-screen,
 .setup-screen,
 .login-screen {

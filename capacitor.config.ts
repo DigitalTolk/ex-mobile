@@ -9,6 +9,7 @@ const config: CapacitorConfig = {
   },
   ios: {
     allowsLinkPreview: false,
+    handleApplicationNotifications: false,
   },
   plugins: {
     SplashScreen: {
