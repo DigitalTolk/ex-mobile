@@ -14,9 +14,10 @@ describe('iOS privacy usage descriptions', () => {
   it.each([
     ['NSCameraUsageDescription', /take photos or videos/],
     ['NSMicrophoneUsageDescription', /record videos/],
+    ['NSLocationWhenInUseUsageDescription', /notification SDK references location APIs/],
     ['NSPhotoLibraryUsageDescription', /attach existing photos or videos/],
     ['NSPhotoLibraryAddUsageDescription', /save downloaded chat attachments/],
-  ])('keeps %s present for App Review media attachment flows', (key, expectedText) => {
+  ])('keeps %s present for App Review privacy checks', (key, expectedText) => {
     const plist = infoPlist();
 
     expect(plist).toContain(`<key>${key}</key>`);
