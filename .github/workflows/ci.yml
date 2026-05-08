@@ -18,6 +18,8 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: macos-26
     needs: lint-test
+    env:
+      VITE_ONESIGNAL_APP_ID: ${{ vars.ONESIGNAL_APP_ID || secrets.ONESIGNAL_APP_ID }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6

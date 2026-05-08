@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SplashScreen } from '@capacitor/splash-screen';
 import App from './App';
 import { navigateToServer } from './lib/navigation';
+import { clearNativeNotificationContext, enableNativeNotificationsForServer } from './lib/onesignal';
 import { loadStoredSession, resetSession, storeServerUrl } from './lib/session';
 
 vi.mock('@capacitor/splash-screen', () => ({
@@ -14,6 +15,11 @@ vi.mock('@capacitor/splash-screen', () => ({
 
 vi.mock('./lib/navigation', () => ({
   navigateToServer: vi.fn(),
+}));
+
+vi.mock('./lib/onesignal', () => ({
+  clearNativeNotificationContext: vi.fn(),
+  enableNativeNotificationsForServer: vi.fn(),
 }));
 
 vi.mock('./lib/session', () => ({
@@ -39,6 +45,8 @@ describe('App', () => {
     vi.mocked(resetSession).mockReset().mockResolvedValue(undefined);
     vi.mocked(storeServerUrl).mockReset().mockResolvedValue(undefined);
     vi.mocked(navigateToServer).mockReset();
+    vi.mocked(clearNativeNotificationContext).mockReset().mockResolvedValue({ enabled: false, reason: 'not-native' });
+    vi.mocked(enableNativeNotificationsForServer).mockReset().mockResolvedValue({ enabled: false, reason: 'not-native' });
     vi.mocked(SplashScreen.hide).mockReset();
     vi.useRealTimers();
   });
@@ -49,6 +57,7 @@ describe('App', () => {
     render(<App />);
 
     expect(screen.getByLabelText('Loading')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'DigitalTolk chat' })).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: 'Setup' })).toBeInTheDocument();
     expect(navigateToServer).not.toHaveBeenCalled();
     expect(SplashScreen.hide).toHaveBeenCalledTimes(1);
@@ -61,28 +70,62 @@ describe('App', () => {
 
     render(<App />);
 
-    expect(await screen.findByLabelText('Opening server')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Change server' })).toBeInTheDocument();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByLabelText('Opening server')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'DigitalTolk chat' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Change server' })).not.toBeInTheDocument();
     expect(navigateToServer).not.toHaveBeenCalled();
+    expect(enableNativeNotificationsForServer).toHaveBeenCalledWith('https://chat.example.com');
 
     await waitFor(() => expect(navigateToServer).toHaveBeenCalledWith('https://chat.example.com'));
     expect(SplashScreen.hide).toHaveBeenCalledTimes(1);
   });
 
-  it('can return to setup before opening a stored server', async () => {
+  it('does not flash standalone server switching while opening a stored server', async () => {
     vi.mocked(loadStoredSession).mockResolvedValue({
       serverUrl: 'https://bad.example.com',
     });
 
     render(<App />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Change server' }));
-
-    expect(resetSession).toHaveBeenCalledTimes(1);
-    expect(await screen.findByRole('heading', { name: 'Setup' })).toBeInTheDocument();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByLabelText('Opening server')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Change server' })).not.toBeInTheDocument();
 
     await new Promise((resolve) => setTimeout(resolve, 850));
-    expect(navigateToServer).not.toHaveBeenCalled();
+    expect(navigateToServer).toHaveBeenCalledWith('https://bad.example.com');
+  });
+
+  it('shows delayed server recovery if opening the stored server stalls', async () => {
+    vi.useFakeTimers();
+    vi.mocked(loadStoredSession).mockResolvedValue({
+      serverUrl: 'https://bad.example.com',
+    });
+
+    render(<App />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByLabelText('Opening server')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Change server' })).not.toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(15000);
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Change server' }));
+      await Promise.resolve();
+    });
+    expect(resetSession).toHaveBeenCalledTimes(1);
+    expect(clearNativeNotificationContext).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('heading', { name: 'Setup' })).toBeInTheDocument();
+    vi.useRealTimers();
   });
 
   it('stores a server URL and redirects the WebView', async () => {
@@ -94,6 +137,7 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save server' }));
 
     expect(storeServerUrl).toHaveBeenCalledWith('https://chat.example.com');
+    expect(enableNativeNotificationsForServer).toHaveBeenCalledWith('https://chat.example.com');
     expect(navigateToServer).toHaveBeenCalledWith('https://chat.example.com');
     expect(screen.getByLabelText('Opening server')).toBeInTheDocument();
   });
