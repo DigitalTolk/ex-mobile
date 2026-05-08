@@ -3,7 +3,7 @@ import OneSignal, { LogLevel } from '@onesignal/capacitor-plugin';
 
 export type NativeNotificationResult =
   | { enabled: true }
-  | { enabled: false; reason: 'missing-app-id' | 'not-native' | 'initialization-failed' };
+  | { enabled: false; reason: 'missing-app-id' | 'not-native' | 'initialization-failed' | 'invalid-user-id' };
 
 let initializationPromise: Promise<NativeNotificationResult> | null = null;
 let notificationClickListenerRegistered = false;
@@ -52,11 +52,33 @@ export async function enableNativeNotificationsForServer(
   return result;
 }
 
+export async function identifyNativeNotificationUser(
+  serverUrl: string,
+  userId: string,
+  appId = oneSignalAppId(),
+): Promise<NativeNotificationResult> {
+  const trimmedUserId = userId.trim();
+  if (!trimmedUserId) return { enabled: false, reason: 'invalid-user-id' };
+
+  const result = await initializeNativeNotifications(appId);
+  if (!result.enabled) return result;
+
+  await OneSignal.login(trimmedUserId);
+  await OneSignal.User.addTags({
+    app: 'ex-mobile',
+    server_url: serverUrl,
+    user_id: trimmedUserId,
+  });
+
+  return result;
+}
+
 export async function clearNativeNotificationContext(appId = oneSignalAppId()): Promise<NativeNotificationResult> {
   const result = await initializeNativeNotifications(appId);
   if (!result.enabled) return result;
 
-  await OneSignal.User.removeTags(['server_url']);
+  await OneSignal.logout();
+  await OneSignal.User.removeTags(['server_url', 'user_id']);
   return result;
 }
 

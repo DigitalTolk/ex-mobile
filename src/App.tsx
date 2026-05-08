@@ -2,7 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { SetupScreen } from './components/SetupScreen';
 import { navigateToServer } from './lib/navigation';
-import { clearNativeNotificationContext, enableNativeNotificationsForServer } from './lib/onesignal';
+import {
+  clearNativeNotificationContext,
+  enableNativeNotificationsForServer,
+  identifyNativeNotificationUser,
+} from './lib/onesignal';
 import { loadStoredSession, resetSession, storeServerUrl } from './lib/session';
 import { isSameServerUrl } from './lib/url';
 
@@ -63,6 +67,17 @@ export default function App() {
 
     window.addEventListener('ex-mobile:notification-url', openNotificationUrl);
     return () => window.removeEventListener('ex-mobile:notification-url', openNotificationUrl);
+  }, [serverUrl]);
+
+  useEffect(() => {
+    function identifyNotificationUser(event: Event) {
+      const userId = (event as CustomEvent<{ userId?: string }>).detail?.userId;
+      if (!serverUrl || !userId) return;
+      void identifyNativeNotificationUser(serverUrl, userId);
+    }
+
+    window.addEventListener('ex-mobile:user', identifyNotificationUser);
+    return () => window.removeEventListener('ex-mobile:user', identifyNotificationUser);
   }, [serverUrl]);
 
   async function saveServer(nextServerUrl: string) {
