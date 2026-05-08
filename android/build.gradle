@@ -22,6 +22,14 @@ allprojects {
         google()
         mavenCentral()
     }
+    configurations.configureEach {
+        resolutionStrategy.eachDependency { details ->
+            if (details.requested.group == 'org.jetbrains.kotlin') {
+                details.useVersion rootProject.ext.kotlin_version
+                details.because 'OneSignal Capacitor Android plugin compiles with Kotlin 1.9.25'
+            }
+        }
+    }
 }
 
 task clean(type: Delete) {
