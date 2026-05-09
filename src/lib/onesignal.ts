@@ -8,6 +8,7 @@ export type NativeNotificationResult =
 
 let initializationPromise: Promise<NativeNotificationResult> | null = null;
 let notificationClickListenerRegistered = false;
+let pendingNotificationUrl: string | null = null;
 
 export function oneSignalAppId(): string {
   return (import.meta.env.VITE_ONESIGNAL_APP_ID ?? '').trim();
@@ -19,11 +20,11 @@ export async function initializeNativeNotifications(appId = oneSignalAppId()): P
   if (!trimmedAppId) return { enabled: false, reason: 'missing-app-id' };
   if (!Capacitor.isNativePlatform()) return { enabled: false, reason: 'not-native' };
 
+  registerNotificationClickListener();
   initializationPromise ??= OneSignal.initialize(trimmedAppId)
     .then(async () => {
       OneSignal.Debug.setLogLevel(LogLevel.Warn);
       await registerNativeNotificationRouting();
-      registerNotificationClickListener();
       return { enabled: true } as const;
     })
     .catch((error: unknown) => {
@@ -84,6 +85,12 @@ export async function clearNativeNotificationContext(appId = oneSignalAppId()): 
   return result;
 }
 
+export function consumePendingNotificationUrl(): string | null {
+  const url = pendingNotificationUrl;
+  pendingNotificationUrl = null;
+  return url;
+}
+
 function registerNotificationClickListener(): void {
   if (notificationClickListenerRegistered) return;
   notificationClickListenerRegistered = true;
@@ -96,8 +103,13 @@ function registerNotificationClickListener(): void {
       event.notification.launchURL;
     if (!url) return;
 
-    window.dispatchEvent(new CustomEvent('ex-mobile:notification-url', { detail: { url } }));
+    dispatchNotificationUrl(url);
   });
+}
+
+function dispatchNotificationUrl(url: string): void {
+  pendingNotificationUrl = url;
+  window.dispatchEvent(new CustomEvent('ex-mobile:notification-url', { detail: { url } }));
 }
 
 function notificationDataUrl(data: unknown): string | undefined {

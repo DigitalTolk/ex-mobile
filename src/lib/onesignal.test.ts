@@ -105,6 +105,9 @@ describe('OneSignal native notification integration', () => {
     expect(OneSignal.initialize).toHaveBeenCalledTimes(1);
     expect(OneSignal.initialize).toHaveBeenCalledWith('onesignal-app-id');
     expect(registerNativeNotificationRouting).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(OneSignal.Notifications.addEventListener).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(OneSignal.initialize).mock.invocationCallOrder[0],
+    );
     expect(OneSignal.User.addTags).toHaveBeenCalledWith({
       app: 'ex-mobile',
       server_url: 'https://chat.example.com',
@@ -190,7 +193,7 @@ describe('OneSignal native notification integration', () => {
   });
 
   it('dispatches notification click URLs for app-level routing', async () => {
-    const { initializeNativeNotifications } = await import('./onesignal');
+    const { consumePendingNotificationUrl, initializeNativeNotifications } = await import('./onesignal');
     vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
     const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
 
@@ -214,6 +217,8 @@ describe('OneSignal native notification integration', () => {
         detail: { url: 'https://chat.example.com/channels/general' },
       }),
     );
+    expect(consumePendingNotificationUrl()).toBe('https://chat.example.com/channels/general');
+    expect(consumePendingNotificationUrl()).toBeNull();
   });
 
   it('dispatches notification launch URLs when the click result has no URL', async () => {
