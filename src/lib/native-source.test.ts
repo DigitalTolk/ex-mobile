@@ -9,10 +9,12 @@ const androidNavigationPluginPath = resolve(
   'android/app/src/main/java/com/digitaltolk/ex/mobile/ServerNavigationPlugin.java',
 );
 const iosNavigationPluginPath = resolve(process.cwd(), 'ios/App/App/ServerNavigation.swift');
+const stylesPath = resolve(process.cwd(), 'src/styles.css');
 const androidVariablesPath = resolve(process.cwd(), 'android/variables.gradle');
 const androidBuildGradlePath = resolve(process.cwd(), 'android/build.gradle');
 const readAndroidNavigationPlugin = () => readFileSync(androidNavigationPluginPath, 'utf8');
 const readIosNavigationPlugin = () => readFileSync(iosNavigationPluginPath, 'utf8');
+const readStyles = () => readFileSync(stylesPath, 'utf8');
 const readAndroidVariables = () => readFileSync(androidVariablesPath, 'utf8');
 const readAndroidBuildGradle = () => readFileSync(androidBuildGradlePath, 'utf8');
 
@@ -75,5 +77,14 @@ describe('native navigation source', () => {
     expect(source).toMatch(
       /stringValue\(event\.getNotification\(\)\.getAdditionalData\(\), "url"\)[\s\S]*jsonStringValue\(event\.getNotification\(\)\.getRawPayload\(\), "url"\)[\s\S]*event\.getResult\(\)\.getUrl\(\)[\s\S]*event\.getNotification\(\)\.getLaunchURL\(\)/,
     );
+  });
+
+  it('keeps the local setup screen from becoming document-scrollable on input focus', () => {
+    const source = readStyles();
+
+    expect(source).toMatch(/html,\s*body,\s*#root\s*{[\s\S]*overflow: hidden;/);
+    expect(source).toMatch(/body\s*{[\s\S]*position: fixed;[\s\S]*inset: 0;/);
+    expect(source).toMatch(/\.loading-screen,\s*\.setup-screen,\s*\.login-screen\s*{[\s\S]*position: fixed;[\s\S]*overflow: hidden;/);
+    expect(source).toMatch(/input\s*{[\s\S]*font-size: 16px;/);
   });
 });
