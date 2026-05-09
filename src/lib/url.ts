@@ -15,5 +15,23 @@ export function apiUrl(serverUrl: string, path: string): string {
 }
 
 export function authCallbackUrl(): string {
-  return 'ex://app/auth/callback';
+  return 'ex://mobile/auth/callback';
+}
+
+export function isSameServerUrl(serverUrl: string, candidateUrl: string): boolean {
+  const server = new URL(serverUrl);
+  const candidate = new URL(candidateUrl);
+
+  return (
+    server.protocol.toLowerCase() === candidate.protocol.toLowerCase() &&
+    server.hostname.toLowerCase() === candidate.hostname.toLowerCase() &&
+    normalizedPort(server) === normalizedPort(candidate)
+  );
+}
+
+function normalizedPort(url: URL): string {
+  if (url.port) return url.port;
+  if (url.protocol.toLowerCase() === 'http:') return '80';
+  if (url.protocol.toLowerCase() === 'https:') return '443';
+  return '';
 }

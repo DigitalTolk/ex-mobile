@@ -5,6 +5,7 @@ const config: CapacitorConfig = {
   appName: 'ex',
   webDir: 'dist',
   server: {
+    // The chat server is user-configured at runtime; native navigation guards keep non-server links external.
     allowNavigation: ['*'],
   },
   ios: {

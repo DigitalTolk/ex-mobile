@@ -4,7 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SplashScreen } from '@capacitor/splash-screen';
 import App from './App';
 import { navigateToServer } from './lib/navigation';
-import { clearNativeNotificationContext, enableNativeNotificationsForServer } from './lib/onesignal';
+import {
+  clearNativeNotificationContext,
+  enableNativeNotificationsForServer,
+  identifyNativeNotificationUser,
+} from './lib/onesignal';
 import { loadStoredSession, resetSession, storeServerUrl } from './lib/session';
 
 vi.mock('@capacitor/splash-screen', () => ({
@@ -20,6 +24,7 @@ vi.mock('./lib/navigation', () => ({
 vi.mock('./lib/onesignal', () => ({
   clearNativeNotificationContext: vi.fn(),
   enableNativeNotificationsForServer: vi.fn(),
+  identifyNativeNotificationUser: vi.fn(),
 }));
 
 vi.mock('./lib/session', () => ({
@@ -47,6 +52,7 @@ describe('App', () => {
     vi.mocked(navigateToServer).mockReset();
     vi.mocked(clearNativeNotificationContext).mockReset().mockResolvedValue({ enabled: false, reason: 'not-native' });
     vi.mocked(enableNativeNotificationsForServer).mockReset().mockResolvedValue({ enabled: false, reason: 'not-native' });
+    vi.mocked(identifyNativeNotificationUser).mockReset().mockResolvedValue({ enabled: false, reason: 'not-native' });
     vi.mocked(SplashScreen.hide).mockReset();
     vi.useRealTimers();
   });
@@ -140,6 +146,102 @@ describe('App', () => {
     expect(enableNativeNotificationsForServer).toHaveBeenCalledWith('https://chat.example.com');
     expect(navigateToServer).toHaveBeenCalledWith('https://chat.example.com');
     expect(screen.getByLabelText('Opening server')).toBeInTheDocument();
+  });
+
+  it('routes notification clicks for the configured server', async () => {
+    vi.mocked(loadStoredSession).mockResolvedValue({
+      serverUrl: 'https://chat.example.com',
+    });
+
+    render(<App />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    window.dispatchEvent(
+      new CustomEvent('ex-mobile:notification-url', {
+        detail: { url: 'https://chat.example.com/channels/general' },
+      }),
+    );
+
+    expect(navigateToServer).toHaveBeenCalledWith('https://chat.example.com/channels/general');
+  });
+
+  it('ignores notification clicks outside the configured server', async () => {
+    vi.mocked(loadStoredSession).mockResolvedValue({
+      serverUrl: 'https://chat.example.com',
+    });
+
+    render(<App />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    window.dispatchEvent(
+      new CustomEvent('ex-mobile:notification-url', {
+        detail: { url: 'https://evil.example.com/channels/general' },
+      }),
+    );
+
+    expect(navigateToServer).not.toHaveBeenCalledWith('https://evil.example.com/channels/general');
+  });
+
+  it('ignores malformed notification click URLs', async () => {
+    vi.mocked(loadStoredSession).mockResolvedValue({
+      serverUrl: 'https://chat.example.com',
+    });
+
+    render(<App />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    window.dispatchEvent(
+      new CustomEvent('ex-mobile:notification-url', {
+        detail: { url: 'not a url' },
+      }),
+    );
+
+    expect(navigateToServer).not.toHaveBeenCalledWith('not a url');
+  });
+
+  it('identifies native notification users for the configured server', async () => {
+    vi.mocked(loadStoredSession).mockResolvedValue({
+      serverUrl: 'https://chat.example.com',
+    });
+
+    render(<App />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    window.dispatchEvent(
+      new CustomEvent('ex-mobile:user', {
+        detail: { userId: 'user-123' },
+      }),
+    );
+
+    expect(identifyNativeNotificationUser).toHaveBeenCalledWith('https://chat.example.com', 'user-123');
+  });
+
+  it('ignores native notification user events before a server is configured', async () => {
+    vi.mocked(loadStoredSession).mockResolvedValue({ serverUrl: null });
+
+    render(<App />);
+
+    await screen.findByRole('heading', { name: 'Setup' });
+
+    window.dispatchEvent(
+      new CustomEvent('ex-mobile:user', {
+        detail: { userId: 'user-123' },
+      }),
+    );
+
+    expect(identifyNativeNotificationUser).not.toHaveBeenCalled();
   });
 
   it('keeps loading state when initialization is cancelled before session resolves', async () => {

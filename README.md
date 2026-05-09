@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-The app asks for the chat server URL on first launch, stores it in Capacitor Preferences, and signs in through the system browser using the server's existing allowlisted `ex://app/auth/callback` redirect.
+The app asks for the chat server URL on first launch, stores it in Capacitor Preferences, and signs in through the system browser using the server's allowlisted `ex://mobile/auth/callback` redirect.
 
 ## Native notifications
 

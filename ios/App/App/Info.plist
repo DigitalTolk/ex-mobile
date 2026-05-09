@@ -41,6 +41,8 @@
 	<string>ex needs camera access so you can take photos or videos to attach to chat messages.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>ex needs microphone access when you record videos to attach to chat messages.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>ex does not use your location directly. This description is included because the notification SDK references location APIs.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>ex needs photo library access so you can attach existing photos or videos to chat messages.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

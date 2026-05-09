@@ -26,6 +26,8 @@ vi.mock('@onesignal/capacitor-plugin', () => ({
       removeTags: vi.fn(),
     },
     initialize: vi.fn(),
+    login: vi.fn(),
+    logout: vi.fn(),
   },
 }));
 
@@ -39,6 +41,8 @@ describe('OneSignal native notification integration', () => {
     vi.resetModules();
     vi.mocked(Capacitor.isNativePlatform).mockReset();
     vi.mocked(OneSignal.initialize).mockReset().mockResolvedValue(undefined);
+    vi.mocked(OneSignal.login).mockReset().mockResolvedValue(undefined);
+    vi.mocked(OneSignal.logout).mockReset().mockResolvedValue(undefined);
     vi.mocked(OneSignal.Debug.setLogLevel).mockReset();
     vi.mocked(OneSignal.Notifications.addEventListener).mockReset();
     vi.mocked(OneSignal.Notifications.canRequestPermission).mockReset().mockResolvedValue(false);
@@ -123,6 +127,37 @@ describe('OneSignal native notification integration', () => {
     });
 
     expect(OneSignal.User.addTags).not.toHaveBeenCalled();
+  });
+
+  it('logs in and tags the native subscription with the authenticated user', async () => {
+    const { identifyNativeNotificationUser } = await import('./onesignal');
+    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
+
+    await expect(
+      identifyNativeNotificationUser('https://chat.example.com', ' user-123 ', 'onesignal-app-id'),
+    ).resolves.toEqual({
+      enabled: true,
+    });
+
+    expect(OneSignal.login).toHaveBeenCalledWith('user-123');
+    expect(OneSignal.User.addTags).toHaveBeenCalledWith({
+      app: 'ex-mobile',
+      server_url: 'https://chat.example.com',
+      user_id: 'user-123',
+    });
+  });
+
+  it('rejects empty native notification user IDs', async () => {
+    const { identifyNativeNotificationUser } = await import('./onesignal');
+    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
+
+    await expect(identifyNativeNotificationUser('https://chat.example.com', ' ', 'onesignal-app-id')).resolves.toEqual({
+      enabled: false,
+      reason: 'invalid-user-id',
+    });
+
+    expect(OneSignal.initialize).not.toHaveBeenCalled();
+    expect(OneSignal.login).not.toHaveBeenCalled();
   });
 
   it('reports initialization failures without leaving the SDK permanently stuck', async () => {
@@ -230,7 +265,8 @@ describe('OneSignal native notification integration', () => {
 
     await clearNativeNotificationContext('onesignal-app-id');
 
-    expect(OneSignal.User.removeTags).toHaveBeenCalledWith(['server_url']);
+    expect(OneSignal.logout).toHaveBeenCalledTimes(1);
+    expect(OneSignal.User.removeTags).toHaveBeenCalledWith(['server_url', 'user_id']);
   });
 
   it('does not remove server tags when clearing is unavailable', async () => {

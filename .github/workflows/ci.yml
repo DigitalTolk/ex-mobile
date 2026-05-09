@@ -14,10 +14,32 @@ jobs:
     uses: ./.github/workflows/lint-test.yml
     secrets: inherit
 
+  android-build:
+    runs-on: ubuntu-latest
+    needs: lint-test
+    env:
+      VITE_ONESIGNAL_APP_ID: ${{ vars.ONESIGNAL_APP_ID || secrets.ONESIGNAL_APP_ID }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3.2.2
+      - run: npm ci
+      - run: npm run build
+      - run: npx capacitor sync android
+      - run: ./gradlew assembleDebug
+        working-directory: android
+
   testflight:
     if: github.event_name == 'pull_request'
     runs-on: macos-26
-    needs: lint-test
+    needs: [lint-test, android-build]
     env:
       VITE_ONESIGNAL_APP_ID: ${{ vars.ONESIGNAL_APP_ID || secrets.ONESIGNAL_APP_ID }}
     steps:

@@ -2,8 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { SetupScreen } from './components/SetupScreen';
 import { navigateToServer } from './lib/navigation';
-import { clearNativeNotificationContext, enableNativeNotificationsForServer } from './lib/onesignal';
+import {
+  clearNativeNotificationContext,
+  enableNativeNotificationsForServer,
+  identifyNativeNotificationUser,
+} from './lib/onesignal';
 import { loadStoredSession, resetSession, storeServerUrl } from './lib/session';
+import { isSameServerUrl } from './lib/url';
 
 type View = 'loading' | 'setup' | 'redirecting';
 const STORED_SERVER_REDIRECT_DELAY_MS = 750;
@@ -47,6 +52,33 @@ export default function App() {
     const timer = setTimeout(() => setShowServerRecovery(true), SERVER_RECOVERY_DELAY_MS);
     return () => clearTimeout(timer);
   }, [view]);
+
+  useEffect(() => {
+    function openNotificationUrl(event: Event) {
+      const url = (event as CustomEvent<{ url?: string }>).detail?.url;
+      if (!serverUrl || !url) return;
+
+      try {
+        if (isSameServerUrl(serverUrl, url)) void navigateToServer(url);
+      } catch {
+        return;
+      }
+    }
+
+    window.addEventListener('ex-mobile:notification-url', openNotificationUrl);
+    return () => window.removeEventListener('ex-mobile:notification-url', openNotificationUrl);
+  }, [serverUrl]);
+
+  useEffect(() => {
+    function identifyNotificationUser(event: Event) {
+      const userId = (event as CustomEvent<{ userId?: string }>).detail?.userId;
+      if (!serverUrl || !userId) return;
+      void identifyNativeNotificationUser(serverUrl, userId);
+    }
+
+    window.addEventListener('ex-mobile:user', identifyNotificationUser);
+    return () => window.removeEventListener('ex-mobile:user', identifyNotificationUser);
+  }, [serverUrl]);
 
   async function saveServer(nextServerUrl: string) {
     await storeServerUrl(nextServerUrl);
