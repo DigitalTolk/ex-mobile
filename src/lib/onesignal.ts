@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import OneSignal, { LogLevel } from '@onesignal/capacitor-plugin';
+import { registerNativeNotificationRouting } from './navigation';
 
 export type NativeNotificationResult =
   | { enabled: true }
@@ -19,8 +20,9 @@ export async function initializeNativeNotifications(appId = oneSignalAppId()): P
   if (!Capacitor.isNativePlatform()) return { enabled: false, reason: 'not-native' };
 
   initializationPromise ??= OneSignal.initialize(trimmedAppId)
-    .then(() => {
+    .then(async () => {
       OneSignal.Debug.setLogLevel(LogLevel.Warn);
+      await registerNativeNotificationRouting();
       registerNotificationClickListener();
       return { enabled: true } as const;
     })
@@ -88,9 +90,9 @@ function registerNotificationClickListener(): void {
 
   OneSignal.Notifications.addEventListener('click', (event) => {
     const url =
-      event.result.url ??
       notificationDataUrl(event.notification.additionalData) ??
       notificationDataUrl(event.notification.rawPayload) ??
+      event.result.url ??
       event.notification.launchURL;
     if (!url) return;
 

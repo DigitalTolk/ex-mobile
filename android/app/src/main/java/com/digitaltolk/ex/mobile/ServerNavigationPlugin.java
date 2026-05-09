@@ -12,12 +12,26 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.onesignal.OneSignal;
+import com.onesignal.notifications.INotificationClickEvent;
+import com.onesignal.notifications.INotificationClickListener;
+
+import java.util.Map;
+
+import org.json.JSONObject;
 
 @CapacitorPlugin(name = "ServerNavigation")
-public class ServerNavigationPlugin extends Plugin {
+public class ServerNavigationPlugin extends Plugin implements INotificationClickListener {
     private static final String STORAGE_NAME = "CapacitorStorage";
     private static final String SERVER_URL_KEY = "server-url";
     private static final String MOBILE_CALLBACK = "ex://mobile/auth/callback";
+    private boolean notificationClickListenerRegistered;
+
+    @Override
+    public void load() {
+        super.load();
+        registerNotificationClickListener();
+    }
 
     @PluginMethod
     public void open(PluginCall call) {
@@ -32,6 +46,12 @@ public class ServerNavigationPlugin extends Plugin {
             getBridge().getWebView().loadUrl(url.toString());
             call.resolve(new JSObject());
         });
+    }
+
+    @PluginMethod
+    public void registerNotificationRouting(PluginCall call) {
+        registerNotificationClickListener();
+        call.resolve(new JSObject());
     }
 
     @PluginMethod
@@ -67,6 +87,84 @@ public class ServerNavigationPlugin extends Plugin {
         }
 
         return null;
+    }
+
+    private void registerNotificationClickListener() {
+        if (notificationClickListenerRegistered) {
+            return;
+        }
+
+        try {
+            OneSignal.getNotifications().addClickListener(this);
+            notificationClickListenerRegistered = true;
+        } catch (Exception exception) {
+            notificationClickListenerRegistered = false;
+        }
+    }
+
+    @Override
+    public void onClick(INotificationClickEvent event) {
+        Uri url = notificationUrl(event);
+        if (!isConfiguredServerURL(getContext(), url)) {
+            return;
+        }
+
+        getBridge().getWebView().post(() -> getBridge().getWebView().loadUrl(url.toString()));
+    }
+
+    private Uri notificationUrl(INotificationClickEvent event) {
+        String[] candidates = {
+            stringValue(event.getNotification().getAdditionalData(), "url"),
+            jsonStringValue(event.getNotification().getRawPayload(), "url"),
+            event.getResult().getUrl(),
+            event.getNotification().getLaunchURL()
+        };
+
+        for (String candidate : candidates) {
+            Uri url = parseHttpUrl(candidate);
+            if (url != null) {
+                return url;
+            }
+        }
+
+        return null;
+    }
+
+    private static Uri parseHttpUrl(String rawURL) {
+        if (rawURL == null) {
+            return null;
+        }
+
+        Uri url = Uri.parse(rawURL.trim());
+        return isHttpUrl(url) ? url : null;
+    }
+
+    private static String stringValue(Object data, String key) {
+        Object value = null;
+        if (data instanceof JSONObject) {
+            value = ((JSONObject) data).opt(key);
+        } else if (data instanceof Map<?, ?>) {
+            value = ((Map<?, ?>) data).get(key);
+        }
+
+        if (!(value instanceof String)) {
+            return null;
+        }
+
+        String trimmedValue = ((String) value).trim();
+        return trimmedValue.isEmpty() ? null : trimmedValue;
+    }
+
+    private static String jsonStringValue(String rawJSON, String key) {
+        if (rawJSON == null || rawJSON.trim().isEmpty()) {
+            return null;
+        }
+
+        try {
+            return stringValue(new JSONObject(rawJSON), key);
+        } catch (Exception exception) {
+            return null;
+        }
     }
 
     public static boolean handleCallback(Activity activity, Bridge bridge, Intent intent) {

@@ -8,9 +8,11 @@ const androidNavigationPluginPath = resolve(
   process.cwd(),
   'android/app/src/main/java/com/digitaltolk/ex/mobile/ServerNavigationPlugin.java',
 );
+const iosNavigationPluginPath = resolve(process.cwd(), 'ios/App/App/ServerNavigation.swift');
 const androidVariablesPath = resolve(process.cwd(), 'android/variables.gradle');
 const androidBuildGradlePath = resolve(process.cwd(), 'android/build.gradle');
 const readAndroidNavigationPlugin = () => readFileSync(androidNavigationPluginPath, 'utf8');
+const readIosNavigationPlugin = () => readFileSync(iosNavigationPluginPath, 'utf8');
 const readAndroidVariables = () => readFileSync(androidVariablesPath, 'utf8');
 const readAndroidBuildGradle = () => readFileSync(androidBuildGradlePath, 'utf8');
 
@@ -35,5 +37,43 @@ describe('native navigation source', () => {
     expect(readAndroidVariables()).toContain("kotlin_version = '1.9.25'");
     expect(readAndroidBuildGradle()).toContain('details.requested.group == \'org.jetbrains.kotlin\'');
     expect(readAndroidBuildGradle()).toContain('details.useVersion rootProject.ext.kotlin_version');
+  });
+
+  it('routes iOS notification clicks through the configured server WebView', () => {
+    const source = readIosNavigationPlugin();
+
+    expect(source).toContain('OSNotificationClickListener');
+    expect(source).toContain('OneSignal.Notifications.addClickListener(self)');
+    expect(source).toContain('registerNotificationRouting');
+    expect(source).toContain('func onClick(event: OSNotificationClickEvent)');
+    expect(source).toContain('isConfiguredServerURL(url)');
+    expect(source).toContain('webView?.load(URLRequest(url: url))');
+  });
+
+  it('prefers OneSignal notification data URLs over launch URLs on iOS', () => {
+    const source = readIosNavigationPlugin();
+
+    expect(source).toMatch(
+      /stringValue\(event\.notification\.additionalData\?\["url"\]\)[\s\S]*stringValue\(event\.notification\.rawPayload\["url"\]\)[\s\S]*event\.result\.url[\s\S]*event\.notification\.launchURL/,
+    );
+  });
+
+  it('routes Android notification clicks through the configured server WebView', () => {
+    const source = readAndroidNavigationPlugin();
+
+    expect(source).toContain('implements INotificationClickListener');
+    expect(source).toContain('OneSignal.getNotifications().addClickListener(this)');
+    expect(source).toContain('registerNotificationRouting');
+    expect(source).toContain('public void onClick(INotificationClickEvent event)');
+    expect(source).toContain('isConfiguredServerURL(getContext(), url)');
+    expect(source).toContain('getBridge().getWebView().loadUrl(url.toString())');
+  });
+
+  it('prefers OneSignal notification data URLs over launch URLs on Android', () => {
+    const source = readAndroidNavigationPlugin();
+
+    expect(source).toMatch(
+      /stringValue\(event\.getNotification\(\)\.getAdditionalData\(\), "url"\)[\s\S]*jsonStringValue\(event\.getNotification\(\)\.getRawPayload\(\), "url"\)[\s\S]*event\.getResult\(\)\.getUrl\(\)[\s\S]*event\.getNotification\(\)\.getLaunchURL\(\)/,
+    );
   });
 });

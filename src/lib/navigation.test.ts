@@ -4,6 +4,7 @@ import { navigateToServer } from './navigation';
 
 const plugin = vi.hoisted(() => ({
   open: vi.fn(),
+  registerNotificationRouting: vi.fn(),
 }));
 
 vi.mock('@capacitor/core', () => ({
@@ -31,5 +32,21 @@ describe('navigation', () => {
 
     expect(plugin.open).toHaveBeenCalledWith({ url: 'https://chat.example.com' });
     expect(location.replace).not.toHaveBeenCalled();
+  });
+
+  it('registers native notification routing only in native builds', async () => {
+    const { registerNativeNotificationRouting } = await import('./navigation');
+    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(false);
+    plugin.registerNotificationRouting.mockClear();
+
+    await registerNativeNotificationRouting();
+    expect(plugin.registerNotificationRouting).not.toHaveBeenCalled();
+
+    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
+    plugin.registerNotificationRouting.mockResolvedValue(undefined);
+
+    await registerNativeNotificationRouting();
+
+    expect(plugin.registerNotificationRouting).toHaveBeenCalledTimes(1);
   });
 });
