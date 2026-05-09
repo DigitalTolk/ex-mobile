@@ -1,5 +1,6 @@
 import OneSignal from '@onesignal/capacitor-plugin';
 import { Capacitor } from '@capacitor/core';
+import { registerNativeNotificationRouting } from './navigation';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@capacitor/core', () => ({
@@ -31,6 +32,10 @@ vi.mock('@onesignal/capacitor-plugin', () => ({
   },
 }));
 
+vi.mock('./navigation', () => ({
+  registerNativeNotificationRouting: vi.fn(),
+}));
+
 describe('OneSignal native notification integration', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -49,6 +54,7 @@ describe('OneSignal native notification integration', () => {
     vi.mocked(OneSignal.Notifications.requestPermission).mockReset().mockResolvedValue(false);
     vi.mocked(OneSignal.User.addTags).mockReset().mockResolvedValue(undefined);
     vi.mocked(OneSignal.User.removeTags).mockReset().mockResolvedValue(undefined);
+    vi.mocked(registerNativeNotificationRouting).mockReset().mockResolvedValue(undefined);
   });
 
   it('does nothing when no OneSignal app ID is configured', async () => {
@@ -98,6 +104,10 @@ describe('OneSignal native notification integration', () => {
 
     expect(OneSignal.initialize).toHaveBeenCalledTimes(1);
     expect(OneSignal.initialize).toHaveBeenCalledWith('onesignal-app-id');
+    expect(registerNativeNotificationRouting).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(OneSignal.Notifications.addEventListener).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(OneSignal.initialize).mock.invocationCallOrder[0],
+    );
     expect(OneSignal.User.addTags).toHaveBeenCalledWith({
       app: 'ex-mobile',
       server_url: 'https://chat.example.com',
@@ -183,7 +193,7 @@ describe('OneSignal native notification integration', () => {
   });
 
   it('dispatches notification click URLs for app-level routing', async () => {
-    const { initializeNativeNotifications } = await import('./onesignal');
+    const { consumePendingNotificationUrl, initializeNativeNotifications } = await import('./onesignal');
     vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
     const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
 
@@ -207,6 +217,8 @@ describe('OneSignal native notification integration', () => {
         detail: { url: 'https://chat.example.com/channels/general' },
       }),
     );
+    expect(consumePendingNotificationUrl()).toBe('https://chat.example.com/channels/general');
+    expect(consumePendingNotificationUrl()).toBeNull();
   });
 
   it('dispatches notification launch URLs when the click result has no URL', async () => {
@@ -237,6 +249,94 @@ describe('OneSignal native notification integration', () => {
     );
   });
 
+  it('dispatches notification data URLs before falling back to launch URLs', async () => {
+    const { initializeNativeNotifications } = await import('./onesignal');
+    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+
+    await initializeNativeNotifications('onesignal-app-id');
+
+    const listener = vi.mocked(OneSignal.Notifications.addEventListener).mock.calls[0]?.[1];
+    listener?.({
+      result: {},
+      notification: {
+        body: '',
+        launchURL: 'https://chat.example.com/browser-fallback',
+        rawPayload: {},
+        additionalData: {
+          url: 'https://chat.example.com/channels/general',
+        },
+        notificationId: 'notification-id',
+        display: vi.fn(),
+      },
+    });
+
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'ex-mobile:notification-url',
+        detail: { url: 'https://chat.example.com/channels/general' },
+      }),
+    );
+  });
+
+  it('dispatches notification data URLs before click result URLs', async () => {
+    const { initializeNativeNotifications } = await import('./onesignal');
+    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+
+    await initializeNativeNotifications('onesignal-app-id');
+
+    const listener = vi.mocked(OneSignal.Notifications.addEventListener).mock.calls[0]?.[1];
+    listener?.({
+      result: { url: 'https://chat.example.com/browser-fallback' },
+      notification: {
+        body: '',
+        rawPayload: {},
+        additionalData: {
+          url: 'https://chat.example.com/channels/general',
+        },
+        notificationId: 'notification-id',
+        display: vi.fn(),
+      },
+    });
+
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'ex-mobile:notification-url',
+        detail: { url: 'https://chat.example.com/channels/general' },
+      }),
+    );
+  });
+
+  it('dispatches raw payload data URLs when additional data is unavailable', async () => {
+    const { initializeNativeNotifications } = await import('./onesignal');
+    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+
+    await initializeNativeNotifications('onesignal-app-id');
+
+    const listener = vi.mocked(OneSignal.Notifications.addEventListener).mock.calls[0]?.[1];
+    listener?.({
+      result: {},
+      notification: {
+        body: '',
+        rawPayload: {
+          url: 'https://chat.example.com/threads/thread-id',
+        },
+        additionalData: {},
+        notificationId: 'notification-id',
+        display: vi.fn(),
+      },
+    });
+
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'ex-mobile:notification-url',
+        detail: { url: 'https://chat.example.com/threads/thread-id' },
+      }),
+    );
+  });
+
   it('ignores notification clicks without a URL', async () => {
     const { initializeNativeNotifications } = await import('./onesignal');
     vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
@@ -251,6 +351,54 @@ describe('OneSignal native notification integration', () => {
         body: '',
         rawPayload: {},
         additionalData: {},
+        notificationId: 'notification-id',
+        display: vi.fn(),
+      },
+    });
+
+    expect(dispatchSpy).not.toHaveBeenCalled();
+  });
+
+  it('ignores blank and non-string notification data URLs', async () => {
+    const { initializeNativeNotifications } = await import('./onesignal');
+    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+
+    await initializeNativeNotifications('onesignal-app-id');
+
+    const listener = vi.mocked(OneSignal.Notifications.addEventListener).mock.calls[0]?.[1];
+    listener?.({
+      result: {},
+      notification: {
+        body: '',
+        rawPayload: {
+          url: 123,
+        },
+        additionalData: {
+          url: ' ',
+        },
+        notificationId: 'notification-id',
+        display: vi.fn(),
+      },
+    });
+
+    expect(dispatchSpy).not.toHaveBeenCalled();
+  });
+
+  it('ignores missing notification data objects', async () => {
+    const { initializeNativeNotifications } = await import('./onesignal');
+    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+
+    await initializeNativeNotifications('onesignal-app-id');
+
+    const listener = vi.mocked(OneSignal.Notifications.addEventListener).mock.calls[0]?.[1];
+    listener?.({
+      result: {},
+      notification: {
+        body: '',
+        rawPayload: undefined as unknown as object,
+        additionalData: undefined as unknown as object,
         notificationId: 'notification-id',
         display: vi.fn(),
       },

@@ -6,6 +6,7 @@ import App from './App';
 import { navigateToServer } from './lib/navigation';
 import {
   clearNativeNotificationContext,
+  consumePendingNotificationUrl,
   enableNativeNotificationsForServer,
   identifyNativeNotificationUser,
 } from './lib/onesignal';
@@ -23,6 +24,7 @@ vi.mock('./lib/navigation', () => ({
 
 vi.mock('./lib/onesignal', () => ({
   clearNativeNotificationContext: vi.fn(),
+  consumePendingNotificationUrl: vi.fn(),
   enableNativeNotificationsForServer: vi.fn(),
   identifyNativeNotificationUser: vi.fn(),
 }));
@@ -51,6 +53,7 @@ describe('App', () => {
     vi.mocked(storeServerUrl).mockReset().mockResolvedValue(undefined);
     vi.mocked(navigateToServer).mockReset();
     vi.mocked(clearNativeNotificationContext).mockReset().mockResolvedValue({ enabled: false, reason: 'not-native' });
+    vi.mocked(consumePendingNotificationUrl).mockReset().mockReturnValue(null);
     vi.mocked(enableNativeNotificationsForServer).mockReset().mockResolvedValue({ enabled: false, reason: 'not-native' });
     vi.mocked(identifyNativeNotificationUser).mockReset().mockResolvedValue({ enabled: false, reason: 'not-native' });
     vi.mocked(SplashScreen.hide).mockReset();
@@ -165,7 +168,26 @@ describe('App', () => {
       }),
     );
 
-    expect(navigateToServer).toHaveBeenCalledWith('https://chat.example.com/channels/general');
+    await waitFor(() => expect(navigateToServer).toHaveBeenCalledWith('https://chat.example.com/channels/general'));
+  });
+
+  it('routes cold-start notification clicks captured before the server listener is ready', async () => {
+    vi.mocked(loadStoredSession).mockResolvedValue({
+      serverUrl: 'https://chat.example.com',
+    });
+    vi.mocked(consumePendingNotificationUrl).mockReturnValueOnce('https://chat.example.com/channels/general');
+
+    render(<App />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(navigateToServer).toHaveBeenCalledWith('https://chat.example.com/channels/general'));
+
+    await new Promise((resolve) => setTimeout(resolve, 850));
+
+    expect(navigateToServer).not.toHaveBeenCalledWith('https://chat.example.com');
   });
 
   it('ignores notification clicks outside the configured server', async () => {

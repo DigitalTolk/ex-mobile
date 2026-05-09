@@ -1,18 +1,32 @@
 import AuthenticationServices
 import Capacitor
 import Foundation
+import OneSignalFramework
 import WebKit
 
 @objc(ServerNavigation)
-public class ServerNavigation: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticationPresentationContextProviding {
+public class ServerNavigation: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticationPresentationContextProviding, OSNotificationClickListener {
     public let identifier = "ServerNavigation"
     public let jsName = "ServerNavigation"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "open", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "resetServer", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "resetServer", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "registerNotificationRouting", returnType: CAPPluginReturnPromise)
     ]
 
     private var authSession: ASWebAuthenticationSession?
+    private var notificationClickListenerRegistered = false
+
+    public override func load() {
+        super.load()
+        registerNotificationClickListener()
+    }
+
+    deinit {
+        if notificationClickListenerRegistered {
+            OneSignal.Notifications.removeClickListener(self)
+        }
+    }
 
     @objc func open(_ call: CAPPluginCall) {
         guard
@@ -29,6 +43,11 @@ public class ServerNavigation: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticationP
             self?.webView?.load(URLRequest(url: url))
             call.resolve()
         }
+    }
+
+    @objc func registerNotificationRouting(_ call: CAPPluginCall) {
+        registerNotificationClickListener()
+        call.resolve()
     }
 
     @objc func resetServer(_ call: CAPPluginCall) {
@@ -62,8 +81,56 @@ public class ServerNavigation: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticationP
         return nil
     }
 
+    public func onClick(event: OSNotificationClickEvent) {
+        guard
+            let url = notificationURL(from: event),
+            isConfiguredServerURL(url)
+        else {
+            return
+        }
+
+        DispatchQueue.main.async { [weak self] in
+            self?.webView?.load(URLRequest(url: url))
+        }
+    }
+
     public func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         return bridge?.viewController?.view.window ?? ASPresentationAnchor()
+    }
+
+    private func registerNotificationClickListener() {
+        guard !notificationClickListenerRegistered else {
+            return
+        }
+
+        OneSignal.Notifications.addClickListener(self)
+        notificationClickListenerRegistered = true
+    }
+
+    private func notificationURL(from event: OSNotificationClickEvent) -> URL? {
+        return [
+            stringValue(event.notification.additionalData?["url"]),
+            stringValue(event.notification.rawPayload["url"]),
+            event.result.url,
+            event.notification.launchURL
+        ]
+        .compactMap { $0 }
+        .compactMap { URL(string: $0) }
+        .first { url in
+            guard let scheme = url.scheme?.lowercased() else {
+                return false
+            }
+            return ["http", "https"].contains(scheme)
+        }
+    }
+
+    private func stringValue(_ value: Any?) -> String? {
+        guard let rawValue = value as? String else {
+            return nil
+        }
+
+        let trimmedValue = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedValue.isEmpty ? nil : trimmedValue
     }
 
     private func isOIDCLoginURL(_ url: URL) -> Bool {

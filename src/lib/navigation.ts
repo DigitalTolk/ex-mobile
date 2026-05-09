@@ -6,6 +6,7 @@ interface LocationLike {
 
 interface ServerNavigationPlugin {
   open(options: { url: string }): Promise<void>;
+  registerNotificationRouting(): Promise<void>;
 }
 
 const ServerNavigation = registerPlugin<ServerNavigationPlugin>('ServerNavigation');
@@ -17,4 +18,12 @@ export async function navigateToServer(serverUrl: string, location: LocationLike
   }
 
   location.replace(serverUrl);
+}
+
+export async function registerNativeNotificationRouting(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) {
+    return;
+  }
+
+  await ServerNavigation.registerNotificationRouting();
 }

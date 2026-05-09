@@ -4,6 +4,7 @@ import { SetupScreen } from './components/SetupScreen';
 import { navigateToServer } from './lib/navigation';
 import {
   clearNativeNotificationContext,
+  consumePendingNotificationUrl,
   enableNativeNotificationsForServer,
   identifyNativeNotificationUser,
 } from './lib/onesignal';
@@ -54,15 +55,25 @@ export default function App() {
   }, [view]);
 
   useEffect(() => {
-    function openNotificationUrl(event: Event) {
-      const url = (event as CustomEvent<{ url?: string }>).detail?.url;
+    function routeNotificationUrl(url: string | null | undefined) {
       if (!serverUrl || !url) return;
 
       try {
-        if (isSameServerUrl(serverUrl, url)) void navigateToServer(url);
+        if (!isSameServerUrl(serverUrl, url)) return;
+        if (redirectTimerRef.current) {
+          clearTimeout(redirectTimerRef.current);
+          redirectTimerRef.current = null;
+        }
+        void navigateToServer(url);
       } catch {
         return;
       }
+    }
+
+    if (serverUrl) routeNotificationUrl(consumePendingNotificationUrl());
+
+    function openNotificationUrl(event: Event) {
+      routeNotificationUrl((event as CustomEvent<{ url?: string }>).detail?.url);
     }
 
     window.addEventListener('ex-mobile:notification-url', openNotificationUrl);
