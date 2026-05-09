@@ -10,11 +10,13 @@ const androidNavigationPluginPath = resolve(
 );
 const iosNavigationPluginPath = resolve(process.cwd(), 'ios/App/App/ServerNavigation.swift');
 const stylesPath = resolve(process.cwd(), 'src/styles.css');
+const androidAppBuildGradlePath = resolve(process.cwd(), 'android/app/build.gradle');
 const androidVariablesPath = resolve(process.cwd(), 'android/variables.gradle');
 const androidBuildGradlePath = resolve(process.cwd(), 'android/build.gradle');
 const readAndroidNavigationPlugin = () => readFileSync(androidNavigationPluginPath, 'utf8');
 const readIosNavigationPlugin = () => readFileSync(iosNavigationPluginPath, 'utf8');
 const readStyles = () => readFileSync(stylesPath, 'utf8');
+const readAndroidAppBuildGradle = () => readFileSync(androidAppBuildGradlePath, 'utf8');
 const readAndroidVariables = () => readFileSync(androidVariablesPath, 'utf8');
 const readAndroidBuildGradle = () => readFileSync(androidBuildGradlePath, 'utf8');
 
@@ -37,8 +39,10 @@ describe('native navigation source', () => {
 
   it('keeps Kotlin aligned with OneSignal Android dependencies', () => {
     expect(readAndroidVariables()).toContain("kotlin_version = '1.9.25'");
+    expect(readAndroidVariables()).toContain("oneSignalVersion = '5.8.1'");
     expect(readAndroidBuildGradle()).toContain('details.requested.group == \'org.jetbrains.kotlin\'');
     expect(readAndroidBuildGradle()).toContain('details.useVersion rootProject.ext.kotlin_version');
+    expect(readAndroidAppBuildGradle()).toContain('implementation "com.onesignal:OneSignal:$oneSignalVersion"');
   });
 
   it('routes iOS notification clicks through the configured server WebView', () => {
