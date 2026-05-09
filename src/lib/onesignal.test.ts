@@ -237,6 +237,65 @@ describe('OneSignal native notification integration', () => {
     );
   });
 
+  it('dispatches notification data URLs before falling back to launch URLs', async () => {
+    const { initializeNativeNotifications } = await import('./onesignal');
+    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+
+    await initializeNativeNotifications('onesignal-app-id');
+
+    const listener = vi.mocked(OneSignal.Notifications.addEventListener).mock.calls[0]?.[1];
+    listener?.({
+      result: {},
+      notification: {
+        body: '',
+        launchURL: 'https://chat.example.com/browser-fallback',
+        rawPayload: {},
+        additionalData: {
+          url: 'https://chat.example.com/channels/general',
+        },
+        notificationId: 'notification-id',
+        display: vi.fn(),
+      },
+    });
+
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'ex-mobile:notification-url',
+        detail: { url: 'https://chat.example.com/channels/general' },
+      }),
+    );
+  });
+
+  it('dispatches raw payload data URLs when additional data is unavailable', async () => {
+    const { initializeNativeNotifications } = await import('./onesignal');
+    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+
+    await initializeNativeNotifications('onesignal-app-id');
+
+    const listener = vi.mocked(OneSignal.Notifications.addEventListener).mock.calls[0]?.[1];
+    listener?.({
+      result: {},
+      notification: {
+        body: '',
+        rawPayload: {
+          url: 'https://chat.example.com/threads/thread-id',
+        },
+        additionalData: {},
+        notificationId: 'notification-id',
+        display: vi.fn(),
+      },
+    });
+
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'ex-mobile:notification-url',
+        detail: { url: 'https://chat.example.com/threads/thread-id' },
+      }),
+    );
+  });
+
   it('ignores notification clicks without a URL', async () => {
     const { initializeNativeNotifications } = await import('./onesignal');
     vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
@@ -251,6 +310,54 @@ describe('OneSignal native notification integration', () => {
         body: '',
         rawPayload: {},
         additionalData: {},
+        notificationId: 'notification-id',
+        display: vi.fn(),
+      },
+    });
+
+    expect(dispatchSpy).not.toHaveBeenCalled();
+  });
+
+  it('ignores blank and non-string notification data URLs', async () => {
+    const { initializeNativeNotifications } = await import('./onesignal');
+    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+
+    await initializeNativeNotifications('onesignal-app-id');
+
+    const listener = vi.mocked(OneSignal.Notifications.addEventListener).mock.calls[0]?.[1];
+    listener?.({
+      result: {},
+      notification: {
+        body: '',
+        rawPayload: {
+          url: 123,
+        },
+        additionalData: {
+          url: ' ',
+        },
+        notificationId: 'notification-id',
+        display: vi.fn(),
+      },
+    });
+
+    expect(dispatchSpy).not.toHaveBeenCalled();
+  });
+
+  it('ignores missing notification data objects', async () => {
+    const { initializeNativeNotifications } = await import('./onesignal');
+    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+
+    await initializeNativeNotifications('onesignal-app-id');
+
+    const listener = vi.mocked(OneSignal.Notifications.addEventListener).mock.calls[0]?.[1];
+    listener?.({
+      result: {},
+      notification: {
+        body: '',
+        rawPayload: undefined as unknown as object,
+        additionalData: undefined as unknown as object,
         notificationId: 'notification-id',
         display: vi.fn(),
       },

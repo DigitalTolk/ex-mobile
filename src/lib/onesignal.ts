@@ -87,9 +87,20 @@ function registerNotificationClickListener(): void {
   notificationClickListenerRegistered = true;
 
   OneSignal.Notifications.addEventListener('click', (event) => {
-    const url = event.result.url ?? event.notification.launchURL;
+    const url =
+      event.result.url ??
+      notificationDataUrl(event.notification.additionalData) ??
+      notificationDataUrl(event.notification.rawPayload) ??
+      event.notification.launchURL;
     if (!url) return;
 
     window.dispatchEvent(new CustomEvent('ex-mobile:notification-url', { detail: { url } }));
   });
+}
+
+function notificationDataUrl(data: unknown): string | undefined {
+  if (!data || typeof data !== 'object') return undefined;
+
+  const url = (data as { url?: unknown }).url;
+  return typeof url === 'string' && url.trim() ? url : undefined;
 }
