@@ -99,12 +99,11 @@ describe('native navigation source', () => {
 
     expect(source).toContain('WKScriptMessageHandler');
     expect(source).toContain('backgroundMessageHandler = "exBackground"');
-    expect(source).toContain('keyboardFocusMessageHandler = "exKeyboardFocus"');
-    expect(source).toContain('keyboardFocusHandler.postMessage("focus")');
-    expect(source).toContain('prewarmKeyboardBackground');
-    expect(source).toContain('estimatedKeyboardFrame');
-    expect(source).toContain('keyboardPrewarmWorkItem');
-    expect(source).toContain('max(320, view.bounds.height * 0.38)');
+    expect(source).toContain('initialChromeScript');
+    expect(source).toContain('injectionTime: .atDocumentStart');
+    expect(source).toContain('background-color: rgb(10, 10, 10)');
+    expect(source).toContain('color-scheme: dark');
+    expect(source).toContain('view.window?.backgroundColor');
     expect(source).toContain('explicitKeyboardBackground');
     expect(source).toContain('getPropertyValue("--ex-keyboard-background")');
     expect(source).toContain('canvas.getContext("2d")');
@@ -134,6 +133,8 @@ describe('native navigation source', () => {
     expect(source).toContain('keyboardAccessoryBackdrop');
     expect(source).toContain('KeyboardAccessoryBackdropView');
     expect(source).toContain('height: 58');
+    expect(source).toContain('isOpaque = true');
+    expect(source).toContain('autoresizingMask = [.flexibleWidth]');
     expect(source).toContain('keyboardBackdropColor(for: color)');
     expect(source).toContain('color.luminance < 0.18');
     expect(source).toContain('red: 10 / 255, green: 10 / 255, blue: 10 / 255');

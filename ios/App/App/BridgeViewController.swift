@@ -4,7 +4,32 @@ import WebKit
 
 final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
     private static let backgroundMessageHandler = "exBackground"
-    private static let keyboardFocusMessageHandler = "exKeyboardFocus"
+    private static let initialChromeScript = """
+    (() => {
+      const install = () => {
+        if (!document.head || document.getElementById("ex-mobile-initial-chrome")) return;
+        const style = document.createElement("style");
+        style.id = "ex-mobile-initial-chrome";
+        style.textContent = `
+          html, body {
+            background-color: rgb(10, 10, 10);
+          }
+
+          @media (prefers-color-scheme: dark) {
+            html, body {
+              color-scheme: dark;
+            }
+          }
+        `;
+        document.head.appendChild(style);
+      };
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", install, { once: true });
+      }
+      install();
+    })();
+    """
     private static let backgroundSyncScript = """
     (() => {
       const handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.exBackground;
@@ -200,7 +225,6 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
     (() => {
       if (window.__exMobileFocusRestoreInstalled) return;
       window.__exMobileFocusRestoreInstalled = true;
-      const keyboardFocusHandler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.exKeyboardFocus;
 
       let lastFocusedEditable = null;
       const isEditable = (element) => {
@@ -257,9 +281,6 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
           : event.target;
         if (isEditable(target)) {
           lastFocusedEditable = target;
-          if (keyboardFocusHandler) {
-            keyboardFocusHandler.postMessage("focus");
-          }
         }
       }, true);
 
@@ -332,7 +353,6 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
     private let keyboardBackgroundView = UIView()
     private var lastPageBackgroundColor: UIColor?
     private var keyboardVisible = false
-    private var keyboardPrewarmWorkItem: DispatchWorkItem?
 
     override var preferredStatusBarStyle: UIStatusBarStyle {
         .lightContent
@@ -346,7 +366,19 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         registerApplicationFocusRestoreNotifications()
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        view.window?.backgroundColor = keyboardBackdropColor(for: lastPageBackgroundColor ?? fallbackBackgroundColor)
+    }
+
     override func webView(with frame: CGRect, configuration: WKWebViewConfiguration) -> WKWebView {
+        configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: Self.initialChromeScript,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
         configuration.userContentController.addUserScript(
             WKUserScript(
                 source: Self.backgroundSyncScript,
@@ -369,7 +401,6 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
             )
         )
         configuration.userContentController.add(self, name: Self.backgroundMessageHandler)
-        configuration.userContentController.add(self, name: Self.keyboardFocusMessageHandler)
 
         let webView = AppWebView(frame: frame, configuration: configuration)
         configureWebViewBackground(webView, color: fallbackBackgroundColor)
@@ -381,9 +412,6 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         webView?.configuration.userContentController.removeScriptMessageHandler(
             forName: Self.backgroundMessageHandler
         )
-        webView?.configuration.userContentController.removeScriptMessageHandler(
-            forName: Self.keyboardFocusMessageHandler
-        )
     }
 
     override func capacitorDidLoad() {
@@ -392,13 +420,6 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        if message.name == Self.keyboardFocusMessageHandler {
-            DispatchQueue.main.async { [weak self] in
-                self?.prewarmKeyboardBackground()
-            }
-            return
-        }
-
         guard message.name == Self.backgroundMessageHandler,
               let cssColor = message.body as? String,
               let color = UIColor(cssColor: cssColor)
@@ -415,6 +436,7 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         lastPageBackgroundColor = color
         view.backgroundColor = color
         keyboardBackgroundView.backgroundColor = keyboardBackdropColor(for: color)
+        view.window?.backgroundColor = keyboardBackdropColor(for: color)
         if let webView {
             configureWebViewBackground(webView, color: color)
         }
@@ -447,39 +469,8 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         keyboardBackgroundView.isHidden = true
         keyboardBackgroundView.isUserInteractionEnabled = false
         keyboardBackgroundView.backgroundColor = fallbackBackgroundColor
+        keyboardBackgroundView.isOpaque = true
         view.addSubview(keyboardBackgroundView)
-    }
-
-    private func prewarmKeyboardBackground() {
-        guard !keyboardVisible else {
-            return
-        }
-
-        keyboardPrewarmWorkItem?.cancel()
-        keyboardBackgroundView.backgroundColor = keyboardBackdropColor(for: lastPageBackgroundColor ?? fallbackBackgroundColor)
-        keyboardBackgroundView.frame = estimatedKeyboardFrame()
-        keyboardBackgroundView.isHidden = false
-        view.bringSubviewToFront(keyboardBackgroundView)
-
-        let workItem = DispatchWorkItem { [weak self] in
-            guard let self, !self.keyboardVisible else {
-                return
-            }
-
-            self.keyboardBackgroundView.isHidden = true
-        }
-        keyboardPrewarmWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: workItem)
-    }
-
-    private func estimatedKeyboardFrame() -> CGRect {
-        let height = max(320, view.bounds.height * 0.38)
-        return CGRect(
-            x: 0,
-            y: view.bounds.height - height,
-            width: view.bounds.width,
-            height: height
-        )
     }
 
     private func registerKeyboardBackgroundNotifications() {
@@ -519,8 +510,6 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
             return
         }
 
-        keyboardPrewarmWorkItem?.cancel()
-        keyboardPrewarmWorkItem = nil
         keyboardVisible = true
         keyboardBackgroundView.backgroundColor = keyboardBackdropColor(for: lastPageBackgroundColor ?? fallbackBackgroundColor)
         keyboardBackgroundView.frame = keyboardIntersection
@@ -530,8 +519,6 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
     }
 
     @objc private func keyboardWillHide(_ notification: Notification) {
-        keyboardPrewarmWorkItem?.cancel()
-        keyboardPrewarmWorkItem = nil
         keyboardVisible = false
         animateKeyboardBackground(with: notification) { [weak self] in
             self?.keyboardBackgroundView.isHidden = true
@@ -576,8 +563,24 @@ private final class AppWebView: WKWebView {
 }
 
 private final class KeyboardAccessoryBackdropView: UIView {
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        commonInit()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        commonInit()
+    }
+
     override var intrinsicContentSize: CGSize {
         CGSize(width: UIView.noIntrinsicMetric, height: 58)
+    }
+
+    private func commonInit() {
+        backgroundColor = UIColor(red: 10 / 255, green: 10 / 255, blue: 10 / 255, alpha: 1)
+        isOpaque = true
+        autoresizingMask = [.flexibleWidth]
     }
 }
 
