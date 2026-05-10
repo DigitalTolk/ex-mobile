@@ -114,6 +114,8 @@ describe('native navigation source', () => {
     expect(source).toContain('overrideUserInterfaceStyle = style');
     expect(source).toContain('view.window?.overrideUserInterfaceStyle = style');
     expect(source).toContain('webView?.overrideUserInterfaceStyle = style');
+    expect(source).toContain('resolvedInterfaceStyle == .light ? .darkContent : .lightContent');
+    expect(source).toContain('setNeedsStatusBarAppearanceUpdate()');
     expect(source).toContain('view.window?.backgroundColor');
     expect(source).toContain('explicitKeyboardBackground');
     expect(source).toContain('getPropertyValue("--ex-keyboard-background")');

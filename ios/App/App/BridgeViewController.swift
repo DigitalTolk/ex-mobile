@@ -445,7 +445,7 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
     private var pageInterfaceStyle: UIUserInterfaceStyle = .unspecified
 
     override var preferredStatusBarStyle: UIStatusBarStyle {
-        .lightContent
+        resolvedInterfaceStyle == .light ? .darkContent : .lightContent
     }
 
     override func viewDidLoad() {
@@ -563,6 +563,7 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         overrideUserInterfaceStyle = style
         view.window?.overrideUserInterfaceStyle = style
         webView?.overrideUserInterfaceStyle = style
+        setNeedsStatusBarAppearanceUpdate()
 
         if let appWebView = webView as? AppWebView {
             appWebView.keyboardAccessoryBackdrop.overrideUserInterfaceStyle = style
