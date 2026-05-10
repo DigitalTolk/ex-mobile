@@ -101,7 +101,9 @@ describe('native navigation source', () => {
     expect(source).toContain('backgroundMessageHandler = "exBackground"');
     expect(source).toContain('explicitKeyboardBackground');
     expect(source).toContain('getPropertyValue("--ex-keyboard-background")');
+    expect(source).toContain('canvas.getContext("2d")');
     expect(source).toMatch(/explicitKeyboardBackground\(\) \|\| visibleBackground/);
+    expect(source).toMatch(/const normalized = normalizeColor\(color\);[\s\S]*if \(normalized\) return normalized;/);
     expect(source).toContain('visibleKeyboardBackdropElements');
     expect(source).toContain('[edgeInset, height - bottomInset]');
     expect(source).toContain('document.elementFromPoint');
@@ -112,6 +114,8 @@ describe('native navigation source', () => {
     expect(source).toContain('keyboardFrameEndUserInfoKey');
     expect(source).toContain('view.bringSubviewToFront(keyboardBackgroundView)');
     expect(source).toContain('__exMobileRestoreFocus');
+    expect(source).toContain('keepEditableVisibleSoon(target)');
+    expect(source).toContain('scrollParents');
     expect(source).toContain('UIApplication.didBecomeActiveNotification');
     expect(source).toContain('keyboardVisible');
     expect(source).toContain('webView?.evaluateJavaScript("window.__exMobileRestoreFocus');

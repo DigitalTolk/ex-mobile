@@ -20,7 +20,19 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         document.documentElement.appendChild(probe);
         const normalized = getComputedStyle(probe).backgroundColor;
         probe.remove();
-        return transparent.has(normalized) ? "" : normalized;
+        if (!normalized || transparent.has(normalized)) return "";
+
+        if (normalized.startsWith("rgb") || normalized.startsWith("#")) {
+          return normalized;
+        }
+
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+        if (!context) return normalized;
+
+        context.fillStyle = "#000000";
+        context.fillStyle = normalized;
+        return context.fillStyle || normalized;
       };
       const explicitKeyboardBackground = () => {
         const candidates = [document.documentElement, document.body].filter(Boolean);
@@ -65,7 +77,8 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         for (const node of candidates) {
           if (!node) continue;
           const color = getComputedStyle(node).backgroundColor;
-          if (color && !transparent.has(color)) return color;
+          const normalized = normalizeColor(color);
+          if (normalized) return normalized;
         }
         return "";
       };
@@ -115,6 +128,46 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         }
         return element.isContentEditable || Boolean(element.closest("[contenteditable='true']"));
       };
+      const scrollParents = (element) => {
+        const parents = [];
+        let current = element && element.parentElement;
+        while (current && current !== document.body && current !== document.documentElement) {
+          const style = getComputedStyle(current);
+          if (/(auto|scroll|overlay)/.test(style.overflowY) && current.scrollHeight > current.clientHeight) {
+            parents.push(current);
+          }
+          current = current.parentElement;
+        }
+        return parents;
+      };
+      const keepEditableVisible = (target) => {
+        const visualViewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+        const bottomPadding = 24;
+
+        try {
+          target.scrollIntoView({ block: "nearest", inline: "nearest" });
+        } catch (_) {
+          target.scrollIntoView(false);
+        }
+
+        for (const parent of scrollParents(target)) {
+          const targetRect = target.getBoundingClientRect();
+          const parentRect = parent.getBoundingClientRect();
+          if (targetRect.bottom > parentRect.bottom - bottomPadding) {
+            parent.scrollTop += targetRect.bottom - parentRect.bottom + bottomPadding;
+          }
+        }
+
+        const targetRect = target.getBoundingClientRect();
+        if (targetRect.bottom > visualViewportHeight - bottomPadding) {
+          window.scrollBy(0, targetRect.bottom - visualViewportHeight + bottomPadding);
+        }
+      };
+      const keepEditableVisibleSoon = (target) => {
+        requestAnimationFrame(() => keepEditableVisible(target));
+        setTimeout(() => keepEditableVisible(target), 120);
+        setTimeout(() => keepEditableVisible(target), 300);
+      };
 
       document.addEventListener("focusin", (event) => {
         const target = event.target && event.target.closest
@@ -135,6 +188,7 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         } catch (_) {
           target.focus();
         }
+        keepEditableVisibleSoon(target);
         return document.activeElement === target;
       };
     })();
@@ -332,8 +386,8 @@ private extension UIColor {
             return
         }
 
-        if value.hasPrefix("color(srgb") {
-            self.init(srgbColor: value)
+        if value.hasPrefix("color(") {
+            self.init(colorFunction: value)
             return
         }
 
@@ -372,12 +426,15 @@ private extension UIColor {
         self.init(red: red, green: green, blue: blue, alpha: alpha)
     }
 
-    private convenience init?(srgbColor value: String) {
+    private convenience init?(colorFunction value: String) {
         guard let content = Self.parenthesizedContent(value) else {
             return nil
         }
 
-        let tokens = Self.colorTokens(content.replacingOccurrences(of: "srgb", with: ""))
+        var tokens = Self.colorTokens(content)
+        if !tokens.isEmpty, Double(tokens[0]) == nil {
+            tokens.removeFirst()
+        }
         guard tokens.count >= 3,
               let red = Double(tokens[0]),
               let green = Double(tokens[1]),
