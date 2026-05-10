@@ -69,6 +69,7 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         if (!color || color === "transparent" || color === "rgba(0, 0, 0, 0)") return "";
         return colorLuminance(color) < 0.5 ? "dark" : "light";
       };
+      const routeEvents = ["hashchange", "popstate", "pageshow", "visibilitychange"];
 
       let lastScheme = "";
       let scheduled = false;
@@ -96,16 +97,13 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
       const observer = new MutationObserver(schedule);
       observer.observe(document.documentElement, {
         attributes: true,
-        attributeFilter: ["class", "style", "data-theme"],
-        childList: true
+        attributeFilter: ["class", "style", "data-theme"]
       });
       const observeBody = () => {
         if (document.body) {
           observer.observe(document.body, {
             attributes: true,
-            attributeFilter: ["class", "style", "data-theme"],
-            childList: true,
-            subtree: true
+            attributeFilter: ["class", "style", "data-theme"]
           });
         }
       };
@@ -115,6 +113,9 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
       const media = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
       if (media && media.addEventListener) {
         media.addEventListener("change", schedule);
+      }
+      for (const eventName of routeEvents) {
+        window.addEventListener(eventName, schedule);
       }
     })();
     """
@@ -260,12 +261,17 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
       };
 
       let lastColor = "";
+      let usedFallbackColor = false;
       let scheduled = false;
       const send = () => {
         scheduled = false;
-        const color = explicitKeyboardBackground()
-          || visibleBackground(visibleComposerSurroundingElements())
-          || visibleBackground(visibleKeyboardBackdropElements());
+        let color = explicitKeyboardBackground();
+        if (!color) {
+          if (usedFallbackColor) return;
+          color = visibleBackground(visibleComposerSurroundingElements())
+            || visibleBackground(visibleKeyboardBackdropElements());
+          usedFallbackColor = Boolean(color);
+        }
         if (!color || color === lastColor) return;
         lastColor = color;
         handler.postMessage(color);
@@ -284,17 +290,14 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
       const observer = new MutationObserver(schedule);
       observer.observe(document.documentElement, {
         attributes: true,
-        attributeFilter: ["class", "style"],
-        childList: true
+        attributeFilter: ["class", "style"]
       });
 
       const observeBody = () => {
         if (document.body) {
           observer.observe(document.body, {
             attributes: true,
-            attributeFilter: ["class", "style"],
-            childList: true,
-            subtree: true
+            attributeFilter: ["class", "style"]
           });
         }
       };
@@ -305,8 +308,6 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
       if (media && media.addEventListener) {
         media.addEventListener("change", schedule);
       }
-      window.addEventListener("resize", schedule);
-      document.addEventListener("focusin", schedule, true);
     })();
     """
     private static let focusRestoreScript = """
