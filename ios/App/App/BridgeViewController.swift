@@ -10,9 +10,22 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
       if (!handler) return;
 
       const transparent = new Set(["transparent", "rgba(0, 0, 0, 0)"]);
-      const pageBackground = () => {
-        const candidates = [document.body, document.documentElement].filter(Boolean);
+      const visibleBottomElement = () => {
+        const x = Math.max(1, Math.floor(window.innerWidth / 2));
+        const y = Math.max(1, Math.floor(window.innerHeight - 1));
+        return document.elementFromPoint(x, y);
+      };
+      const visibleBackground = (start) => {
+        const candidates = [];
+        let current = start;
+        while (current && current.nodeType === Node.ELEMENT_NODE) {
+          candidates.push(current);
+          current = current.parentElement;
+        }
+        candidates.push(document.body, document.documentElement);
+
         for (const node of candidates) {
+          if (!node) continue;
           const color = getComputedStyle(node).backgroundColor;
           if (color && !transparent.has(color)) return color;
         }
@@ -21,7 +34,7 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
 
       let lastColor = "";
       const send = () => {
-        const color = pageBackground();
+        const color = visibleBackground(visibleBottomElement());
         if (!color || color === lastColor) return;
         lastColor = color;
         handler.postMessage(color);
@@ -48,10 +61,11 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
       if (media && media.addEventListener) {
         media.addEventListener("change", schedule);
       }
+      window.addEventListener("resize", schedule);
     })();
     """
 
-    private let fallbackBackgroundColor = UIColor.systemBackground
+    private let fallbackBackgroundColor = UIColor(red: 0.102, green: 0.114, blue: 0.129, alpha: 1)
 
     override var preferredStatusBarStyle: UIStatusBarStyle {
         .lightContent

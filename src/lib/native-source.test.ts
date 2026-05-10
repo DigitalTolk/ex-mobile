@@ -99,10 +99,11 @@ describe('native navigation source', () => {
 
     expect(source).toContain('WKScriptMessageHandler');
     expect(source).toContain('backgroundMessageHandler = "exBackground"');
+    expect(source).toContain('document.elementFromPoint(x, y)');
+    expect(source).toContain('window.addEventListener("resize", schedule)');
     expect(source).toContain('applyWebPageBackgroundColor');
     expect(source).toContain('webView.scrollView.backgroundColor = color');
     expect(source).toContain('webView.underPageBackgroundColor = color');
     expect(source).toContain('UIColor(cssColor: cssColor)');
-    expect(source).not.toContain('UIColor(red: 0.102, green: 0.114, blue: 0.129, alpha: 1)');
   });
 });
