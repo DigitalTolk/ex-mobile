@@ -51,11 +51,7 @@ def assert_iphone_only
 end
 
 def ci_build_number
-  date = Time.now.utc.strftime("%Y%m%d")
-  run_number = ENV["GITHUB_RUN_NUMBER"].to_s.strip
-  return "#{date}.#{run_number}" unless run_number.empty?
-
-  Time.now.utc.strftime("%Y%m%d.%H%M%S")
+  Time.now.utc.strftime("%Y%m%d%H%M%S")
 end
 
 def release_version_from_tag
