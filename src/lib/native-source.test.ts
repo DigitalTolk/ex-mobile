@@ -99,10 +99,21 @@ describe('native navigation source', () => {
 
     expect(source).toContain('WKScriptMessageHandler');
     expect(source).toContain('backgroundMessageHandler = "exBackground"');
+    expect(source).toContain('appearanceMessageHandler = "exAppearance"');
     expect(source).toContain('initialChromeScript');
     expect(source).toContain('injectionTime: .atDocumentStart');
+    expect(source).toContain('color-scheme: light dark');
     expect(source).toContain('background-color: rgb(10, 10, 10)');
+    expect(source).toContain('background-color: rgb(255, 255, 255)');
+    expect(source).toContain('appearanceSyncScript');
     expect(source).toContain('color-scheme: dark');
+    expect(source).toContain('handler.postMessage(scheme)');
+    expect(source).toContain('classList.contains("dark")');
+    expect(source).toContain('classList.contains("light")');
+    expect(source).toContain('applyPageInterfaceStyle');
+    expect(source).toContain('overrideUserInterfaceStyle = style');
+    expect(source).toContain('view.window?.overrideUserInterfaceStyle = style');
+    expect(source).toContain('webView?.overrideUserInterfaceStyle = style');
     expect(source).toContain('view.window?.backgroundColor');
     expect(source).toContain('explicitKeyboardBackground');
     expect(source).toContain('getPropertyValue("--ex-keyboard-background")');
@@ -135,6 +146,8 @@ describe('native navigation source', () => {
     expect(source).toContain('height: 58');
     expect(source).toContain('isOpaque = true');
     expect(source).toContain('autoresizingMask = [.flexibleWidth]');
+    expect(source).toContain('pageInterfaceStyle');
+    expect(source).toContain('resolvedInterfaceStyle == .dark');
     expect(source).toContain('keyboardBackdropColor(for: color)');
     expect(source).toContain('color.luminance < 0.18');
     expect(source).toContain('red: 10 / 255, green: 10 / 255, blue: 10 / 255');

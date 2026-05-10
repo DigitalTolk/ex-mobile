@@ -4,6 +4,7 @@ import WebKit
 
 final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
     private static let backgroundMessageHandler = "exBackground"
+    private static let appearanceMessageHandler = "exAppearance"
     private static let initialChromeScript = """
     (() => {
       const install = () => {
@@ -11,13 +12,21 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         const style = document.createElement("style");
         style.id = "ex-mobile-initial-chrome";
         style.textContent = `
-          html, body {
-            background-color: rgb(10, 10, 10);
+          html {
+            color-scheme: light dark;
           }
 
           @media (prefers-color-scheme: dark) {
             html, body {
+              background-color: rgb(10, 10, 10);
               color-scheme: dark;
+            }
+          }
+
+          @media (prefers-color-scheme: light) {
+            html, body {
+              background-color: rgb(255, 255, 255);
+              color-scheme: light;
             }
           }
         `;
@@ -28,6 +37,85 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         document.addEventListener("DOMContentLoaded", install, { once: true });
       }
       install();
+    })();
+    """
+    private static let appearanceSyncScript = """
+    (() => {
+      const handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.exAppearance;
+      if (!handler) return;
+
+      const colorLuminance = (color) => {
+        const rgb = color.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/);
+        if (!rgb) return 1;
+        return (Number(rgb[1]) * 0.2126 + Number(rgb[2]) * 0.7152 + Number(rgb[3]) * 0.0722) / 255;
+      };
+      const explicitScheme = () => {
+        const nodes = [document.documentElement, document.body].filter(Boolean);
+        for (const node of nodes) {
+          const scheme = getComputedStyle(node).colorScheme;
+          if (scheme && scheme.includes("dark") && !scheme.includes("light")) return "dark";
+          if (scheme && scheme.includes("light") && !scheme.includes("dark")) return "light";
+        }
+        return "";
+      };
+      const classScheme = () => {
+        const root = document.documentElement;
+        if (root.classList.contains("dark") || root.dataset.theme === "dark") return "dark";
+        if (root.classList.contains("light") || root.dataset.theme === "light") return "light";
+        return "";
+      };
+      const backgroundScheme = () => {
+        const color = getComputedStyle(document.body || document.documentElement).backgroundColor;
+        if (!color || color === "transparent" || color === "rgba(0, 0, 0, 0)") return "";
+        return colorLuminance(color) < 0.5 ? "dark" : "light";
+      };
+
+      let lastScheme = "";
+      let scheduled = false;
+      const send = () => {
+        scheduled = false;
+        const scheme = classScheme()
+          || explicitScheme()
+          || backgroundScheme()
+          || (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+        if (!scheme || scheme === lastScheme) return;
+        lastScheme = scheme;
+        handler.postMessage(scheme);
+      };
+      const schedule = () => {
+        if (scheduled) return;
+        scheduled = true;
+        requestAnimationFrame(send);
+      };
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", schedule, { once: true });
+      }
+      schedule();
+
+      const observer = new MutationObserver(schedule);
+      observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["class", "style", "data-theme"],
+        childList: true
+      });
+      const observeBody = () => {
+        if (document.body) {
+          observer.observe(document.body, {
+            attributes: true,
+            attributeFilter: ["class", "style", "data-theme"],
+            childList: true,
+            subtree: true
+          });
+        }
+      };
+      observeBody();
+      document.addEventListener("DOMContentLoaded", observeBody, { once: true });
+
+      const media = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+      if (media && media.addEventListener) {
+        media.addEventListener("change", schedule);
+      }
     })();
     """
     private static let backgroundSyncScript = """
@@ -353,6 +441,7 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
     private let keyboardBackgroundView = UIView()
     private var lastPageBackgroundColor: UIColor?
     private var keyboardVisible = false
+    private var pageInterfaceStyle: UIUserInterfaceStyle = .unspecified
 
     override var preferredStatusBarStyle: UIStatusBarStyle {
         .lightContent
@@ -388,6 +477,13 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         )
         configuration.userContentController.addUserScript(
             WKUserScript(
+                source: Self.appearanceSyncScript,
+                injectionTime: .atDocumentEnd,
+                forMainFrameOnly: true
+            )
+        )
+        configuration.userContentController.addUserScript(
+            WKUserScript(
                 source: Self.focusRestoreScript,
                 injectionTime: .atDocumentEnd,
                 forMainFrameOnly: true
@@ -401,6 +497,7 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
             )
         )
         configuration.userContentController.add(self, name: Self.backgroundMessageHandler)
+        configuration.userContentController.add(self, name: Self.appearanceMessageHandler)
 
         let webView = AppWebView(frame: frame, configuration: configuration)
         configureWebViewBackground(webView, color: fallbackBackgroundColor)
@@ -412,6 +509,9 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         webView?.configuration.userContentController.removeScriptMessageHandler(
             forName: Self.backgroundMessageHandler
         )
+        webView?.configuration.userContentController.removeScriptMessageHandler(
+            forName: Self.appearanceMessageHandler
+        )
     }
 
     override func capacitorDidLoad() {
@@ -420,6 +520,17 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        if message.name == Self.appearanceMessageHandler {
+            guard let scheme = message.body as? String else {
+                return
+            }
+
+            DispatchQueue.main.async { [weak self] in
+                self?.applyPageInterfaceStyle(scheme)
+            }
+            return
+        }
+
         guard message.name == Self.backgroundMessageHandler,
               let cssColor = message.body as? String,
               let color = UIColor(cssColor: cssColor)
@@ -430,6 +541,33 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         DispatchQueue.main.async { [weak self] in
             self?.applyWebPageBackgroundColor(color)
         }
+    }
+
+    private func applyPageInterfaceStyle(_ scheme: String) {
+        let style: UIUserInterfaceStyle
+        switch scheme {
+        case "dark":
+            style = .dark
+        case "light":
+            style = .light
+        default:
+            style = .unspecified
+        }
+
+        guard style != pageInterfaceStyle else {
+            return
+        }
+
+        pageInterfaceStyle = style
+        overrideUserInterfaceStyle = style
+        view.window?.overrideUserInterfaceStyle = style
+        webView?.overrideUserInterfaceStyle = style
+
+        if let appWebView = webView as? AppWebView {
+            appWebView.keyboardAccessoryBackdrop.overrideUserInterfaceStyle = style
+        }
+
+        applyWebPageBackgroundColor(lastPageBackgroundColor ?? fallbackBackgroundColor)
     }
 
     private func applyWebPageBackgroundColor(_ color: UIColor) {
@@ -458,11 +596,15 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
     }
 
     private func keyboardBackdropColor(for color: UIColor) -> UIColor {
-        if traitCollection.userInterfaceStyle == .dark, color.luminance < 0.18 {
+        if resolvedInterfaceStyle == .dark, color.luminance < 0.18 {
             return UIColor(red: 10 / 255, green: 10 / 255, blue: 10 / 255, alpha: 1)
         }
 
         return color
+    }
+
+    private var resolvedInterfaceStyle: UIUserInterfaceStyle {
+        pageInterfaceStyle == .unspecified ? traitCollection.userInterfaceStyle : pageInterfaceStyle
     }
 
     private func configureKeyboardBackgroundView() {
