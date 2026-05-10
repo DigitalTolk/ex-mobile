@@ -146,7 +146,9 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
       };
 
       let lastColor = "";
+      let scheduled = false;
       const send = () => {
+        scheduled = false;
         const color = explicitKeyboardBackground()
           || visibleBackground(visibleComposerSurroundingElements())
           || visibleBackground(visibleKeyboardBackdropElements());
@@ -154,7 +156,11 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         lastColor = color;
         handler.postMessage(color);
       };
-      const schedule = () => requestAnimationFrame(send);
+      const schedule = () => {
+        if (scheduled) return;
+        scheduled = true;
+        requestAnimationFrame(send);
+      };
 
       if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", schedule, { once: true });
@@ -162,11 +168,20 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
       schedule();
 
       const observer = new MutationObserver(schedule);
-      observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style"] });
+      observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["class", "style"],
+        childList: true
+      });
 
       const observeBody = () => {
         if (document.body) {
-          observer.observe(document.body, { attributes: true, attributeFilter: ["class", "style"] });
+          observer.observe(document.body, {
+            attributes: true,
+            attributeFilter: ["class", "style"],
+            childList: true,
+            subtree: true
+          });
         }
       };
       observeBody();

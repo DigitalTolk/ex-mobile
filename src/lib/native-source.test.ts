@@ -114,6 +114,11 @@ describe('native navigation source', () => {
     expect(source).toContain('rect.width >= window.innerWidth * 0.65');
     expect(source).toContain('rect.bottom >= window.innerHeight * 0.45');
     expect(source).toContain('document.addEventListener("focusin", schedule, true)');
+    expect(source).toContain('let scheduled = false');
+    expect(source).toContain('if (scheduled) return');
+    expect(source).toContain('scheduled = true');
+    expect(source).toMatch(/observer\.observe\(document\.documentElement,[\s\S]*childList: true[\s\S]*\);/);
+    expect(source).toMatch(/observer\.observe\(document\.body,[\s\S]*childList: true,[\s\S]*subtree: true[\s\S]*\);/);
     expect(source).toContain('visibleKeyboardBackdropElements');
     expect(source).toContain('[edgeInset, height - bottomInset]');
     expect(source).toContain('document.elementFromPoint');
