@@ -34,6 +34,17 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         context.fillStyle = normalized;
         return context.fillStyle || normalized;
       };
+      const colorLuminance = (color) => {
+        const rgb = color.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/);
+        if (rgb) {
+          return (Number(rgb[1]) * 0.2126 + Number(rgb[2]) * 0.7152 + Number(rgb[3]) * 0.0722) / 255;
+        }
+        const hex = color.match(/^#([0-9a-f]{6})$/i);
+        if (!hex) return 1;
+        const value = Number.parseInt(hex[1], 16);
+        return (((value >> 16) & 255) * 0.2126 + ((value >> 8) & 255) * 0.7152 + (value & 255) * 0.0722) / 255;
+      };
+      const prefersDark = () => Boolean(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
       const explicitKeyboardBackground = () => {
         const candidates = [document.documentElement, document.body].filter(Boolean);
         for (const node of candidates) {
@@ -42,6 +53,56 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
           if (normalized) return normalized;
         }
         return "";
+      };
+      const pointElement = (x, y) => {
+        const width = Math.max(1, window.innerWidth);
+        const height = Math.max(1, window.innerHeight);
+        return document.elementFromPoint(
+          Math.max(1, Math.min(width - 1, x)),
+          Math.max(1, Math.min(height - 1, y))
+        );
+      };
+      const activeComposerElement = () => {
+        const active = document.activeElement && document.activeElement.closest
+          ? document.activeElement.closest("[contenteditable='true'], textarea, input, [role='textbox']")
+          : document.activeElement;
+        if (!active || active === document.body || active === document.documentElement) return null;
+
+        let composer = active;
+        let current = active;
+        while (current && current !== document.body && current !== document.documentElement) {
+          const rect = current.getBoundingClientRect();
+          if (
+            rect.width >= window.innerWidth * 0.65
+            && rect.height >= 44
+            && rect.height <= 260
+            && rect.bottom >= window.innerHeight * 0.45
+          ) {
+            composer = current;
+          }
+          current = current.parentElement;
+        }
+        return composer;
+      };
+      const visibleComposerSurroundingElements = () => {
+        const composer = activeComposerElement();
+        if (!composer) return [];
+        const rect = composer.getBoundingClientRect();
+        if (!rect.width || !rect.height) return [];
+        const xInset = Math.min(16, Math.max(4, rect.width / 8));
+        const yInset = Math.min(16, Math.max(4, rect.height / 8));
+        const points = [
+          [rect.left - 4, rect.top + yInset],
+          [rect.right + 4, rect.top + yInset],
+          [rect.left + xInset, rect.bottom + 4],
+          [rect.right - xInset, rect.bottom + 4],
+          [rect.left + xInset, rect.top - 4],
+          [rect.right - xInset, rect.top - 4],
+        ];
+
+        return points
+          .map(([x, y]) => pointElement(x, y))
+          .filter((node) => node && node !== composer && !composer.contains(node));
       };
       const visibleKeyboardBackdropElements = () => {
         const width = Math.max(1, window.innerWidth);
@@ -57,10 +118,7 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         ];
 
         return points
-          .map(([x, y]) => document.elementFromPoint(
-            Math.max(1, Math.min(width - 1, x)),
-            Math.max(1, Math.min(height - 1, y))
-          ))
+          .map(([x, y]) => pointElement(x, y))
           .filter(Boolean);
       };
       const visibleBackground = (starts) => {
@@ -74,18 +132,24 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         }
         candidates.push(document.body, document.documentElement);
 
+        const colors = [];
         for (const node of candidates) {
           if (!node) continue;
           const color = getComputedStyle(node).backgroundColor;
           const normalized = normalizeColor(color);
-          if (normalized) return normalized;
+          if (normalized) colors.push(normalized);
         }
-        return "";
+        if (!colors.length) return "";
+        if (!prefersDark()) return colors[0];
+        const darkest = colors.sort((left, right) => colorLuminance(left) - colorLuminance(right))[0];
+        return colorLuminance(darkest) < 0.08 ? "rgb(10, 10, 10)" : darkest;
       };
 
       let lastColor = "";
       const send = () => {
-        const color = explicitKeyboardBackground() || visibleBackground(visibleKeyboardBackdropElements());
+        const color = explicitKeyboardBackground()
+          || visibleBackground(visibleComposerSurroundingElements())
+          || visibleBackground(visibleKeyboardBackdropElements());
         if (!color || color === lastColor) return;
         lastColor = color;
         handler.postMessage(color);
@@ -113,6 +177,7 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         media.addEventListener("change", schedule);
       }
       window.addEventListener("resize", schedule);
+      document.addEventListener("focusin", schedule, true);
     })();
     """
     private static let focusRestoreScript = """
@@ -193,6 +258,55 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
       };
     })();
     """
+    private static let compactComposerAlignmentScript = """
+    (() => {
+      if (window.__exMobileCompactComposerAlignmentInstalled) return;
+      window.__exMobileCompactComposerAlignmentInstalled = true;
+
+      const style = document.createElement("style");
+      style.id = "ex-mobile-compact-composer-alignment";
+      style.textContent = `
+        @media (max-width: 767px) {
+          [data-composer-focused="true"] {
+            padding-bottom: 5px !important;
+          }
+
+          [data-composer-focused="true"] [data-message-composer] {
+            margin-bottom: 5px !important;
+          }
+
+          [data-composer-focused="false"] [data-message-composer] [role="textbox"].wysiwyg-editor {
+            align-items: center !important;
+            display: flex !important;
+            line-height: 1.25rem !important;
+          }
+
+          [data-composer-focused="false"] [data-message-composer] [role="textbox"].wysiwyg-editor > *,
+          [data-composer-focused="false"] [data-message-composer] [role="textbox"].wysiwyg-editor p {
+            line-height: 1.25rem !important;
+            margin-bottom: 0 !important;
+            margin-top: 0 !important;
+          }
+
+          [data-composer-focused="false"] [data-message-composer] [role="textbox"].wysiwyg-editor + div {
+            line-height: 1.25rem !important;
+            top: 50% !important;
+            transform: translateY(-50%) !important;
+          }
+        }
+      `;
+
+      const install = () => {
+        if (!document.head || document.getElementById(style.id)) return;
+        document.head.appendChild(style);
+      };
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", install, { once: true });
+      }
+      install();
+    })();
+    """
 
     private let fallbackBackgroundColor = UIColor(red: 0.102, green: 0.114, blue: 0.129, alpha: 1)
     private let keyboardBackgroundView = UIView()
@@ -222,6 +336,13 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         configuration.userContentController.addUserScript(
             WKUserScript(
                 source: Self.focusRestoreScript,
+                injectionTime: .atDocumentEnd,
+                forMainFrameOnly: true
+            )
+        )
+        configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: Self.compactComposerAlignmentScript,
                 injectionTime: .atDocumentEnd,
                 forMainFrameOnly: true
             )
@@ -261,7 +382,7 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
     private func applyWebPageBackgroundColor(_ color: UIColor) {
         lastPageBackgroundColor = color
         view.backgroundColor = color
-        keyboardBackgroundView.backgroundColor = color
+        keyboardBackgroundView.backgroundColor = keyboardBackdropColor(for: color)
         if let webView {
             configureWebViewBackground(webView, color: color)
         }
@@ -276,6 +397,18 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         if #available(iOS 15.0, *) {
             webView.underPageBackgroundColor = color
         }
+
+        if let appWebView = webView as? AppWebView {
+            appWebView.keyboardAccessoryBackdrop.backgroundColor = keyboardBackdropColor(for: color)
+        }
+    }
+
+    private func keyboardBackdropColor(for color: UIColor) -> UIColor {
+        if traitCollection.userInterfaceStyle == .dark, color.luminance < 0.18 {
+            return UIColor(red: 10 / 255, green: 10 / 255, blue: 10 / 255, alpha: 1)
+        }
+
+        return color
     }
 
     private func configureKeyboardBackgroundView() {
@@ -323,7 +456,7 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         }
 
         keyboardVisible = true
-        keyboardBackgroundView.backgroundColor = lastPageBackgroundColor ?? fallbackBackgroundColor
+        keyboardBackgroundView.backgroundColor = keyboardBackdropColor(for: lastPageBackgroundColor ?? fallbackBackgroundColor)
         keyboardBackgroundView.frame = keyboardIntersection
         keyboardBackgroundView.isHidden = false
         view.bringSubviewToFront(keyboardBackgroundView)
@@ -367,12 +500,29 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
 }
 
 private final class AppWebView: WKWebView {
+    let keyboardAccessoryBackdrop = KeyboardAccessoryBackdropView()
+
     override var inputAccessoryView: UIView? {
-        nil
+        keyboardAccessoryBackdrop
+    }
+}
+
+private final class KeyboardAccessoryBackdropView: UIView {
+    override var intrinsicContentSize: CGSize {
+        CGSize(width: UIView.noIntrinsicMetric, height: 58)
     }
 }
 
 private extension UIColor {
+    var luminance: CGFloat {
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        return red * 0.2126 + green * 0.7152 + blue * 0.0722
+    }
+
     convenience init?(cssColor rawValue: String) {
         let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
