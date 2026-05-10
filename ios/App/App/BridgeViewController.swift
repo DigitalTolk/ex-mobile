@@ -10,17 +10,55 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
       if (!handler) return;
 
       const transparent = new Set(["transparent", "rgba(0, 0, 0, 0)"]);
-      const visibleBottomElement = () => {
-        const x = Math.max(1, Math.floor(window.innerWidth / 2));
-        const y = Math.max(1, Math.floor(window.innerHeight - 1));
-        return document.elementFromPoint(x, y);
+      const normalizeColor = (color) => {
+        if (!color) return "";
+        const probe = document.createElement("span");
+        probe.style.position = "fixed";
+        probe.style.pointerEvents = "none";
+        probe.style.opacity = "0";
+        probe.style.backgroundColor = color;
+        document.documentElement.appendChild(probe);
+        const normalized = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return transparent.has(normalized) ? "" : normalized;
       };
-      const visibleBackground = (start) => {
+      const explicitKeyboardBackground = () => {
+        const candidates = [document.documentElement, document.body].filter(Boolean);
+        for (const node of candidates) {
+          const color = getComputedStyle(node).getPropertyValue("--ex-keyboard-background").trim();
+          const normalized = normalizeColor(color);
+          if (normalized) return normalized;
+        }
+        return "";
+      };
+      const visibleKeyboardBackdropElements = () => {
+        const width = Math.max(1, window.innerWidth);
+        const height = Math.max(1, window.innerHeight);
+        const edgeInset = 8;
+        const bottomInset = 8;
+        const points = [
+          [edgeInset, height - bottomInset],
+          [width - edgeInset, height - bottomInset],
+          [edgeInset, height - 48],
+          [width - edgeInset, height - 48],
+          [Math.floor(width / 2), height - bottomInset],
+        ];
+
+        return points
+          .map(([x, y]) => document.elementFromPoint(
+            Math.max(1, Math.min(width - 1, x)),
+            Math.max(1, Math.min(height - 1, y))
+          ))
+          .filter(Boolean);
+      };
+      const visibleBackground = (starts) => {
         const candidates = [];
-        let current = start;
-        while (current && current.nodeType === Node.ELEMENT_NODE) {
-          candidates.push(current);
-          current = current.parentElement;
+        for (const start of starts) {
+          let current = start;
+          while (current && current.nodeType === Node.ELEMENT_NODE) {
+            candidates.push(current);
+            current = current.parentElement;
+          }
         }
         candidates.push(document.body, document.documentElement);
 
@@ -34,7 +72,7 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
 
       let lastColor = "";
       const send = () => {
-        const color = visibleBackground(visibleBottomElement());
+        const color = explicitKeyboardBackground() || visibleBackground(visibleKeyboardBackdropElements());
         if (!color || color === lastColor) return;
         lastColor = color;
         handler.postMessage(color);
@@ -64,10 +102,48 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
       window.addEventListener("resize", schedule);
     })();
     """
+    private static let focusRestoreScript = """
+    (() => {
+      if (window.__exMobileFocusRestoreInstalled) return;
+      window.__exMobileFocusRestoreInstalled = true;
+
+      let lastFocusedEditable = null;
+      const isEditable = (element) => {
+        if (!element || element.nodeType !== Node.ELEMENT_NODE) return false;
+        if (element.matches("textarea, input:not([type=button]):not([type=checkbox]):not([type=radio]):not([type=submit])")) {
+          return !element.disabled && !element.readOnly;
+        }
+        return element.isContentEditable || Boolean(element.closest("[contenteditable='true']"));
+      };
+
+      document.addEventListener("focusin", (event) => {
+        const target = event.target && event.target.closest
+          ? event.target.closest("textarea, input, [contenteditable='true']")
+          : event.target;
+        if (isEditable(target)) {
+          lastFocusedEditable = target;
+        }
+      }, true);
+
+      window.__exMobileRestoreFocus = () => {
+        const target = lastFocusedEditable;
+        if (!isEditable(target) || !target.isConnected) return false;
+        if (document.activeElement === target) return true;
+
+        try {
+          target.focus({ preventScroll: true });
+        } catch (_) {
+          target.focus();
+        }
+        return document.activeElement === target;
+      };
+    })();
+    """
 
     private let fallbackBackgroundColor = UIColor(red: 0.102, green: 0.114, blue: 0.129, alpha: 1)
     private let keyboardBackgroundView = UIView()
     private var lastPageBackgroundColor: UIColor?
+    private var keyboardVisible = false
 
     override var preferredStatusBarStyle: UIStatusBarStyle {
         .lightContent
@@ -78,12 +154,20 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         configureKeyboardBackgroundView()
         applyWebPageBackgroundColor(fallbackBackgroundColor)
         registerKeyboardBackgroundNotifications()
+        registerApplicationFocusRestoreNotifications()
     }
 
     override func webView(with frame: CGRect, configuration: WKWebViewConfiguration) -> WKWebView {
         configuration.userContentController.addUserScript(
             WKUserScript(
                 source: Self.backgroundSyncScript,
+                injectionTime: .atDocumentEnd,
+                forMainFrameOnly: true
+            )
+        )
+        configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: Self.focusRestoreScript,
                 injectionTime: .atDocumentEnd,
                 forMainFrameOnly: true
             )
@@ -162,6 +246,15 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         )
     }
 
+    private func registerApplicationFocusRestoreNotifications() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(applicationDidBecomeActive),
+            name: UIApplication.didBecomeActiveNotification,
+            object: nil
+        )
+    }
+
     @objc private func keyboardWillChangeFrame(_ notification: Notification) {
         guard let endFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else {
             return
@@ -170,10 +263,12 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         let keyboardFrame = view.convert(endFrame, from: nil)
         let keyboardIntersection = view.bounds.intersection(keyboardFrame)
         guard !keyboardIntersection.isNull, keyboardIntersection.height > 0 else {
+            keyboardVisible = false
             keyboardBackgroundView.isHidden = true
             return
         }
 
+        keyboardVisible = true
         keyboardBackgroundView.backgroundColor = lastPageBackgroundColor ?? fallbackBackgroundColor
         keyboardBackgroundView.frame = keyboardIntersection
         keyboardBackgroundView.isHidden = false
@@ -182,9 +277,24 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
     }
 
     @objc private func keyboardWillHide(_ notification: Notification) {
+        keyboardVisible = false
         animateKeyboardBackground(with: notification) { [weak self] in
             self?.keyboardBackgroundView.isHidden = true
         }
+    }
+
+    @objc private func applicationDidBecomeActive() {
+        guard keyboardVisible else {
+            return
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            self?.restoreLastFocusedEditable()
+        }
+    }
+
+    private func restoreLastFocusedEditable() {
+        webView?.evaluateJavaScript("window.__exMobileRestoreFocus && window.__exMobileRestoreFocus();")
     }
 
     private func animateKeyboardBackground(with notification: Notification, completion: (() -> Void)? = nil) {

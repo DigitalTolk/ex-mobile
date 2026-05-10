@@ -99,13 +99,22 @@ describe('native navigation source', () => {
 
     expect(source).toContain('WKScriptMessageHandler');
     expect(source).toContain('backgroundMessageHandler = "exBackground"');
-    expect(source).toContain('document.elementFromPoint(x, y)');
+    expect(source).toContain('explicitKeyboardBackground');
+    expect(source).toContain('getPropertyValue("--ex-keyboard-background")');
+    expect(source).toMatch(/explicitKeyboardBackground\(\) \|\| visibleBackground/);
+    expect(source).toContain('visibleKeyboardBackdropElements');
+    expect(source).toContain('[edgeInset, height - bottomInset]');
+    expect(source).toContain('document.elementFromPoint');
     expect(source).toContain('window.addEventListener("resize", schedule)');
     expect(source).toContain('applyWebPageBackgroundColor');
     expect(source).toContain('keyboardBackgroundView');
     expect(source).toContain('keyboardWillChangeFrameNotification');
     expect(source).toContain('keyboardFrameEndUserInfoKey');
     expect(source).toContain('view.bringSubviewToFront(keyboardBackgroundView)');
+    expect(source).toContain('__exMobileRestoreFocus');
+    expect(source).toContain('UIApplication.didBecomeActiveNotification');
+    expect(source).toContain('keyboardVisible');
+    expect(source).toContain('webView?.evaluateJavaScript("window.__exMobileRestoreFocus');
     expect(source).toContain('webView.scrollView.backgroundColor = color');
     expect(source).toContain('webView.underPageBackgroundColor = color');
     expect(source).toContain('UIColor(cssColor: cssColor)');
