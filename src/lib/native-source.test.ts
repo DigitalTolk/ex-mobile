@@ -102,6 +102,10 @@ describe('native navigation source', () => {
     expect(source).toContain('document.elementFromPoint(x, y)');
     expect(source).toContain('window.addEventListener("resize", schedule)');
     expect(source).toContain('applyWebPageBackgroundColor');
+    expect(source).toContain('keyboardBackgroundView');
+    expect(source).toContain('keyboardWillChangeFrameNotification');
+    expect(source).toContain('keyboardFrameEndUserInfoKey');
+    expect(source).toContain('view.bringSubviewToFront(keyboardBackgroundView)');
     expect(source).toContain('webView.scrollView.backgroundColor = color');
     expect(source).toContain('webView.underPageBackgroundColor = color');
     expect(source).toContain('UIColor(cssColor: cssColor)');

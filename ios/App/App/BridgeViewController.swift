@@ -66,6 +66,8 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
     """
 
     private let fallbackBackgroundColor = UIColor(red: 0.102, green: 0.114, blue: 0.129, alpha: 1)
+    private let keyboardBackgroundView = UIView()
+    private var lastPageBackgroundColor: UIColor?
 
     override var preferredStatusBarStyle: UIStatusBarStyle {
         .lightContent
@@ -73,7 +75,9 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        configureKeyboardBackgroundView()
         applyWebPageBackgroundColor(fallbackBackgroundColor)
+        registerKeyboardBackgroundNotifications()
     }
 
     override func webView(with frame: CGRect, configuration: WKWebViewConfiguration) -> WKWebView {
@@ -92,6 +96,7 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
     }
 
     deinit {
+        NotificationCenter.default.removeObserver(self)
         webView?.configuration.userContentController.removeScriptMessageHandler(
             forName: Self.backgroundMessageHandler
         )
@@ -116,7 +121,9 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
     }
 
     private func applyWebPageBackgroundColor(_ color: UIColor) {
+        lastPageBackgroundColor = color
         view.backgroundColor = color
+        keyboardBackgroundView.backgroundColor = color
         if let webView {
             configureWebViewBackground(webView, color: color)
         }
@@ -131,6 +138,67 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         if #available(iOS 15.0, *) {
             webView.underPageBackgroundColor = color
         }
+    }
+
+    private func configureKeyboardBackgroundView() {
+        keyboardBackgroundView.isHidden = true
+        keyboardBackgroundView.isUserInteractionEnabled = false
+        keyboardBackgroundView.backgroundColor = fallbackBackgroundColor
+        view.addSubview(keyboardBackgroundView)
+    }
+
+    private func registerKeyboardBackgroundNotifications() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(keyboardWillChangeFrame(_:)),
+            name: UIResponder.keyboardWillChangeFrameNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(keyboardWillHide(_:)),
+            name: UIResponder.keyboardWillHideNotification,
+            object: nil
+        )
+    }
+
+    @objc private func keyboardWillChangeFrame(_ notification: Notification) {
+        guard let endFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else {
+            return
+        }
+
+        let keyboardFrame = view.convert(endFrame, from: nil)
+        let keyboardIntersection = view.bounds.intersection(keyboardFrame)
+        guard !keyboardIntersection.isNull, keyboardIntersection.height > 0 else {
+            keyboardBackgroundView.isHidden = true
+            return
+        }
+
+        keyboardBackgroundView.backgroundColor = lastPageBackgroundColor ?? fallbackBackgroundColor
+        keyboardBackgroundView.frame = keyboardIntersection
+        keyboardBackgroundView.isHidden = false
+        view.bringSubviewToFront(keyboardBackgroundView)
+        animateKeyboardBackground(with: notification)
+    }
+
+    @objc private func keyboardWillHide(_ notification: Notification) {
+        animateKeyboardBackground(with: notification) { [weak self] in
+            self?.keyboardBackgroundView.isHidden = true
+        }
+    }
+
+    private func animateKeyboardBackground(with notification: Notification, completion: (() -> Void)? = nil) {
+        let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval ?? 0
+        let curveValue = notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 0
+        let options = UIView.AnimationOptions(rawValue: curveValue << 16)
+
+        UIView.animate(
+            withDuration: duration,
+            delay: 0,
+            options: options,
+            animations: { self.view.layoutIfNeeded() },
+            completion: { _ in completion?() }
+        )
     }
 }
 
