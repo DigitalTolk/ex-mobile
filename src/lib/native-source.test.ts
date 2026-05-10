@@ -55,6 +55,9 @@ describe('native navigation source', () => {
     expect(source).toContain('registerNotificationRouting');
     expect(source).toContain('func onClick(event: OSNotificationClickEvent)');
     expect(source).toContain('isConfiguredServerURL(url)');
+    expect(source).toContain('storePendingNotificationURL(url)');
+    expect(source).toContain('consumePendingNotificationURL(matching: url) ?? url');
+    expect(source).toContain('pendingNotificationURLTTL: TimeInterval = 30');
     expect(source).toContain('webView?.load(URLRequest(url: url))');
   });
 
@@ -74,6 +77,9 @@ describe('native navigation source', () => {
     expect(source).toContain('registerNotificationRouting');
     expect(source).toContain('public void onClick(INotificationClickEvent event)');
     expect(source).toContain('isConfiguredServerURL(getContext(), url)');
+    expect(source).toContain('storePendingNotificationUrl(getContext(), url)');
+    expect(source).toContain('consumePendingNotificationUrl(getContext(), url)');
+    expect(source).toContain('PENDING_NOTIFICATION_URL_TTL_MS = 30_000');
     expect(source).toContain('getBridge().getWebView().loadUrl(url.toString())');
   });
 

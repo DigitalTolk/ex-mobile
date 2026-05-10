@@ -63,11 +63,23 @@ def release_version_from_tag
   match = tag.match(/\Av(\d+\.\d+\.\d+)\z/)
   UI.user_error!("Release tags must use vN.N.N format, got #{tag.inspect}") unless match
 
-  match[1]
+  version = match[1]
+  expected_version = next_marketing_version
+  UI.user_error!("Release tag #{tag.inspect} does not match VERSION #{expected_version.inspect}") unless version == expected_version
+
+  version
+end
+
+def next_marketing_version
+  version_file = File.expand_path("../VERSION", __dir__)
+  version = File.read(version_file).strip
+  UI.user_error!("VERSION must use N.N.N format, got #{version.inspect}") unless version.match?(/\A\d+\.\d+\.\d+\z/)
+
+  version
 end
 
 def pr_marketing_version
-  "0.0.0"
+  next_marketing_version
 end
 
 def provisioning_profile_value(key)

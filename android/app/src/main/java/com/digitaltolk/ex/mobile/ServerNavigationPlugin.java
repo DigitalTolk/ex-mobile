@@ -25,6 +25,9 @@ public class ServerNavigationPlugin extends Plugin implements INotificationClick
     private static final String STORAGE_NAME = "CapacitorStorage";
     private static final String SERVER_URL_KEY = "server-url";
     private static final String MOBILE_CALLBACK = "ex://mobile/auth/callback";
+    private static final String PENDING_NOTIFICATION_URL_KEY = "ex.pending-notification-url";
+    private static final String PENDING_NOTIFICATION_URL_TIMESTAMP_KEY = "ex.pending-notification-url-timestamp";
+    private static final long PENDING_NOTIFICATION_URL_TTL_MS = 30_000;
     private boolean notificationClickListenerRegistered;
 
     @Override
@@ -43,7 +46,8 @@ public class ServerNavigationPlugin extends Plugin implements INotificationClick
         }
 
         getActivity().runOnUiThread(() -> {
-            getBridge().getWebView().loadUrl(url.toString());
+            Uri targetUrl = consumePendingNotificationUrl(getContext(), url);
+            getBridge().getWebView().loadUrl((targetUrl == null ? url : targetUrl).toString());
             call.resolve(new JSObject());
         });
     }
@@ -109,6 +113,7 @@ public class ServerNavigationPlugin extends Plugin implements INotificationClick
             return;
         }
 
+        storePendingNotificationUrl(getContext(), url);
         getBridge().getWebView().post(() -> getBridge().getWebView().loadUrl(url.toString()));
     }
 
@@ -241,6 +246,44 @@ public class ServerNavigationPlugin extends Plugin implements INotificationClick
         return equalsIgnoreCase(url.getScheme(), serverURL.getScheme())
             && equalsIgnoreCase(url.getHost(), serverURL.getHost())
             && normalizedPort(url) == normalizedPort(serverURL);
+    }
+
+    private static Uri consumePendingNotificationUrl(Context context, Uri serverURL) {
+        SharedPreferences preferences = context.getSharedPreferences(STORAGE_NAME, Context.MODE_PRIVATE);
+        try {
+            long timestamp = preferences.getLong(PENDING_NOTIFICATION_URL_TIMESTAMP_KEY, 0);
+            if (timestamp <= 0 || System.currentTimeMillis() - timestamp > PENDING_NOTIFICATION_URL_TTL_MS) {
+                return null;
+            }
+
+            Uri url = parseHttpUrl(preferences.getString(PENDING_NOTIFICATION_URL_KEY, null));
+            if (url == null || !isSameServer(url, serverURL)) {
+                return null;
+            }
+
+            return url;
+        } finally {
+            preferences
+                .edit()
+                .remove(PENDING_NOTIFICATION_URL_KEY)
+                .remove(PENDING_NOTIFICATION_URL_TIMESTAMP_KEY)
+                .apply();
+        }
+    }
+
+    private static void storePendingNotificationUrl(Context context, Uri url) {
+        context
+            .getSharedPreferences(STORAGE_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(PENDING_NOTIFICATION_URL_KEY, url.toString())
+            .putLong(PENDING_NOTIFICATION_URL_TIMESTAMP_KEY, System.currentTimeMillis())
+            .apply();
+    }
+
+    private static boolean isSameServer(Uri left, Uri right) {
+        return equalsIgnoreCase(left.getScheme(), right.getScheme())
+            && equalsIgnoreCase(left.getHost(), right.getHost())
+            && normalizedPort(left) == normalizedPort(right);
     }
 
     private static Uri storedServerURL(Context context) {
