@@ -99,6 +99,12 @@ describe('native navigation source', () => {
 
     expect(source).toContain('WKScriptMessageHandler');
     expect(source).toContain('backgroundMessageHandler = "exBackground"');
+    expect(source).toContain('keyboardFocusMessageHandler = "exKeyboardFocus"');
+    expect(source).toContain('keyboardFocusHandler.postMessage("focus")');
+    expect(source).toContain('prewarmKeyboardBackground');
+    expect(source).toContain('estimatedKeyboardFrame');
+    expect(source).toContain('keyboardPrewarmWorkItem');
+    expect(source).toContain('max(320, view.bounds.height * 0.38)');
     expect(source).toContain('explicitKeyboardBackground');
     expect(source).toContain('getPropertyValue("--ex-keyboard-background")');
     expect(source).toContain('canvas.getContext("2d")');
