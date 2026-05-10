@@ -9,12 +9,14 @@ const androidNavigationPluginPath = resolve(
   'android/app/src/main/java/com/digitaltolk/ex/mobile/ServerNavigationPlugin.java',
 );
 const iosNavigationPluginPath = resolve(process.cwd(), 'ios/App/App/ServerNavigation.swift');
+const iosBridgeViewControllerPath = resolve(process.cwd(), 'ios/App/App/BridgeViewController.swift');
 const stylesPath = resolve(process.cwd(), 'src/styles.css');
 const androidAppBuildGradlePath = resolve(process.cwd(), 'android/app/build.gradle');
 const androidVariablesPath = resolve(process.cwd(), 'android/variables.gradle');
 const androidBuildGradlePath = resolve(process.cwd(), 'android/build.gradle');
 const readAndroidNavigationPlugin = () => readFileSync(androidNavigationPluginPath, 'utf8');
 const readIosNavigationPlugin = () => readFileSync(iosNavigationPluginPath, 'utf8');
+const readIosBridgeViewController = () => readFileSync(iosBridgeViewControllerPath, 'utf8');
 const readStyles = () => readFileSync(stylesPath, 'utf8');
 const readAndroidAppBuildGradle = () => readFileSync(androidAppBuildGradlePath, 'utf8');
 const readAndroidVariables = () => readFileSync(androidVariablesPath, 'utf8');
@@ -90,5 +92,17 @@ describe('native navigation source', () => {
     expect(source).toMatch(/body\s*{[\s\S]*position: fixed;[\s\S]*inset: 0;/);
     expect(source).toMatch(/\.loading-screen,\s*\.setup-screen,\s*\.login-screen\s*{[\s\S]*position: fixed;[\s\S]*overflow: hidden;/);
     expect(source).toMatch(/input\s*{[\s\S]*font-size: 16px;/);
+  });
+
+  it('keeps the iOS WebView background synced with the loaded page', () => {
+    const source = readIosBridgeViewController();
+
+    expect(source).toContain('WKScriptMessageHandler');
+    expect(source).toContain('backgroundMessageHandler = "exBackground"');
+    expect(source).toContain('applyWebPageBackgroundColor');
+    expect(source).toContain('webView.scrollView.backgroundColor = color');
+    expect(source).toContain('webView.underPageBackgroundColor = color');
+    expect(source).toContain('UIColor(cssColor: cssColor)');
+    expect(source).not.toContain('UIColor(red: 0.102, green: 0.114, blue: 0.129, alpha: 1)');
   });
 });
