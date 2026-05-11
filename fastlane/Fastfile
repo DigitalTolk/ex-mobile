@@ -10,6 +10,10 @@ def release_metadata_dir
   File.expand_path("../build/ios/metadata", __dir__)
 end
 
+def generated_release_notes_path
+  File.expand_path("../build/ios/release-notes.txt", __dir__)
+end
+
 def release_support_url
   "https://www.digitaltolk.se/en/contact"
 end
@@ -127,6 +131,10 @@ def prepare_release_metadata
   FileUtils.mkdir_p(en_us_dir)
   File.write(File.join(release_metadata_dir, "copyright.txt"), release_copyright)
   File.write(File.join(en_us_dir, "support_url.txt"), release_support_url)
+  File.write(
+    File.join(en_us_dir, "release_notes.txt"),
+    File.exist?(generated_release_notes_path) ? File.read(generated_release_notes_path) : "Bug fixes and performance improvements.\n"
+  )
 end
 
 platform :ios do

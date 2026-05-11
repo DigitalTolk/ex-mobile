@@ -15,8 +15,13 @@ jobs:
     needs: lint-test
     env:
       VITE_ONESIGNAL_APP_ID: ${{ vars.ONESIGNAL_APP_ID || secrets.ONESIGNAL_APP_ID }}
+      AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+      AWS_REGION: ${{ vars.AWS_REGION || secrets.AWS_REGION || 'eu-north-1' }}
+      BEDROCK_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID || secrets.BEDROCK_MODEL_ID || 'anthropic.claude-sonnet-4-6' }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -30,6 +35,8 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npx capacitor sync ios
+      - name: Generate App Store release notes
+        run: node scripts/generate-release-notes.mjs
       - run: bundle exec fastlane ios app_store_release
         env:
           APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
