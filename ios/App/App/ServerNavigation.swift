@@ -16,6 +16,9 @@ public class ServerNavigation: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticationP
 
     private var authSession: ASWebAuthenticationSession?
     private var notificationClickListenerRegistered = false
+    private let pendingNotificationURLKey = "ex.pending-notification-url"
+    private let pendingNotificationURLTimestampKey = "ex.pending-notification-url-timestamp"
+    private let pendingNotificationURLTTL: TimeInterval = 30
 
     public override func load() {
         super.load()
@@ -40,7 +43,11 @@ public class ServerNavigation: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticationP
         }
 
         DispatchQueue.main.async { [weak self] in
-            self?.webView?.load(URLRequest(url: url))
+            guard let self else {
+                return
+            }
+            let targetURL = self.consumePendingNotificationURL(matching: url) ?? url
+            self.webView?.load(URLRequest(url: targetURL))
             call.resolve()
         }
     }
@@ -90,6 +97,7 @@ public class ServerNavigation: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticationP
         }
 
         DispatchQueue.main.async { [weak self] in
+            self?.storePendingNotificationURL(url)
             self?.webView?.load(URLRequest(url: url))
         }
     }
@@ -153,9 +161,40 @@ public class ServerNavigation: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticationP
             return false
         }
 
-        return url.scheme?.lowercased() == serverURL.scheme?.lowercased()
-            && url.host?.lowercased() == serverURL.host?.lowercased()
-            && normalizedPort(url) == normalizedPort(serverURL)
+        return isSameServer(url, serverURL)
+    }
+
+    private func isSameServer(_ left: URL, _ right: URL) -> Bool {
+        return left.scheme?.lowercased() == right.scheme?.lowercased()
+            && left.host?.lowercased() == right.host?.lowercased()
+            && normalizedPort(left) == normalizedPort(right)
+    }
+
+    private func storePendingNotificationURL(_ url: URL) {
+        UserDefaults.standard.set(url.absoluteString, forKey: pendingNotificationURLKey)
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: pendingNotificationURLTimestampKey)
+    }
+
+    private func consumePendingNotificationURL(matching serverURL: URL) -> URL? {
+        defer {
+            UserDefaults.standard.removeObject(forKey: pendingNotificationURLKey)
+            UserDefaults.standard.removeObject(forKey: pendingNotificationURLTimestampKey)
+        }
+
+        let timestamp = UserDefaults.standard.double(forKey: pendingNotificationURLTimestampKey)
+        guard timestamp > 0, Date().timeIntervalSince1970 - timestamp <= pendingNotificationURLTTL else {
+            return nil
+        }
+
+        guard
+            let rawURL = UserDefaults.standard.string(forKey: pendingNotificationURLKey),
+            let url = URL(string: rawURL),
+            isSameServer(url, serverURL)
+        else {
+            return nil
+        }
+
+        return url
     }
 
     private func storedServerURL() -> URL? {
