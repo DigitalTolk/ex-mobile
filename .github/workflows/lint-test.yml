@@ -3,6 +3,9 @@ name: Lint and Test
 on:
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
   lint-test:
     runs-on: ubuntu-latest
