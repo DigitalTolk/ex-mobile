@@ -18,7 +18,7 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
 
           @media (prefers-color-scheme: dark) {
             html, body {
-              background-color: rgb(10, 10, 10);
+              background-color: rgb(35, 31, 32);
               color-scheme: dark;
             }
           }
@@ -458,7 +458,7 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        view.window?.backgroundColor = keyboardBackdropColor(for: lastPageBackgroundColor ?? fallbackBackgroundColor)
+        view.window?.backgroundColor = lastPageBackgroundColor ?? fallbackBackgroundColor
     }
 
     override func webView(with frame: CGRect, configuration: WKWebViewConfiguration) -> WKWebView {
@@ -575,8 +575,8 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
     private func applyWebPageBackgroundColor(_ color: UIColor) {
         lastPageBackgroundColor = color
         view.backgroundColor = color
-        keyboardBackgroundView.backgroundColor = keyboardBackdropColor(for: color)
-        view.window?.backgroundColor = keyboardBackdropColor(for: color)
+        keyboardBackgroundView.backgroundColor = color
+        view.window?.backgroundColor = color
         if let webView {
             configureWebViewBackground(webView, color: color)
         }
@@ -593,16 +593,8 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         }
 
         if let appWebView = webView as? AppWebView {
-            appWebView.keyboardAccessoryBackdrop.backgroundColor = keyboardBackdropColor(for: color)
+            appWebView.keyboardAccessoryBackdrop.backgroundColor = color
         }
-    }
-
-    private func keyboardBackdropColor(for color: UIColor) -> UIColor {
-        if resolvedInterfaceStyle == .dark, color.luminance < 0.18 {
-            return UIColor(red: 10 / 255, green: 10 / 255, blue: 10 / 255, alpha: 1)
-        }
-
-        return color
     }
 
     private var resolvedInterfaceStyle: UIUserInterfaceStyle {
@@ -655,7 +647,7 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         }
 
         keyboardVisible = true
-        keyboardBackgroundView.backgroundColor = keyboardBackdropColor(for: lastPageBackgroundColor ?? fallbackBackgroundColor)
+        keyboardBackgroundView.backgroundColor = lastPageBackgroundColor ?? fallbackBackgroundColor
         keyboardBackgroundView.frame = keyboardIntersection
         keyboardBackgroundView.isHidden = false
         view.bringSubviewToFront(keyboardBackgroundView)
@@ -722,22 +714,13 @@ private final class KeyboardAccessoryBackdropView: UIView {
     }
 
     private func commonInit() {
-        backgroundColor = UIColor(red: 10 / 255, green: 10 / 255, blue: 10 / 255, alpha: 1)
+        backgroundColor = UIColor(red: 35 / 255, green: 31 / 255, blue: 32 / 255, alpha: 1)
         isOpaque = true
         autoresizingMask = [.flexibleWidth]
     }
 }
 
 private extension UIColor {
-    var luminance: CGFloat {
-        var red: CGFloat = 0
-        var green: CGFloat = 0
-        var blue: CGFloat = 0
-        var alpha: CGFloat = 0
-        getRed(&red, green: &green, blue: &blue, alpha: &alpha)
-        return red * 0.2126 + green * 0.7152 + blue * 0.0722
-    }
-
     convenience init?(cssColor rawValue: String) {
         let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
