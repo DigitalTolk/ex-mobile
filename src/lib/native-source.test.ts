@@ -109,7 +109,7 @@ describe('native navigation source', () => {
     expect(source).toContain('initialChromeScript');
     expect(source).toContain('injectionTime: .atDocumentStart');
     expect(source).toContain('color-scheme: light dark');
-    expect(source).toContain('background-color: rgb(10, 10, 10)');
+    expect(source).toContain('background-color: rgb(35, 31, 32)');
     expect(source).toContain('background-color: rgb(255, 255, 255)');
     expect(source).toContain('appearanceSyncScript');
     expect(source).toContain('color-scheme: dark');
@@ -156,11 +156,8 @@ describe('native navigation source', () => {
     expect(source).toContain('isOpaque = true');
     expect(source).toContain('autoresizingMask = [.flexibleWidth]');
     expect(source).toContain('pageInterfaceStyle');
-    expect(source).toContain('resolvedInterfaceStyle == .dark');
-    expect(source).toContain('keyboardBackdropColor(for: color)');
-    expect(source).toContain('color.luminance < 0.18');
-    expect(source).toContain('red: 10 / 255, green: 10 / 255, blue: 10 / 255');
-    expect(source).toContain('var luminance: CGFloat');
+    expect(source).toContain('keyboardBackgroundView.backgroundColor = color');
+    expect(source).toContain('red: 35 / 255, green: 31 / 255, blue: 32 / 255');
     expect(source).toContain('keyboardWillChangeFrameNotification');
     expect(source).toContain('keyboardFrameEndUserInfoKey');
     expect(source).toContain('view.bringSubviewToFront(keyboardBackgroundView)');
