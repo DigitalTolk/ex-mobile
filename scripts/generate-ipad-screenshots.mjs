@@ -50,9 +50,11 @@ function serveDist(port) {
     }
     const relativeRequestPath = requestPath.replace(/^\/+/, '');
     const candidate = resolve(distRoot, relativeRequestPath);
+    const candidateRel = relative(distRoot, candidate);
+    const candidateUnderDist = candidateRel === '' || (!candidateRel.startsWith('..') && !isAbsolute(candidateRel));
     let target = join(DIST, 'index.html');
 
-    if (requestPath !== '/' && extname(candidate) && existsSync(candidate)) {
+    if (requestPath !== '/' && candidateUnderDist && extname(candidate) && existsSync(candidate)) {
       try {
         const candidateReal = await realpath(candidate);
         const rel = relative(distRoot, candidateReal);
