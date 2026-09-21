@@ -1,10 +1,15 @@
 import Capacitor
+import GameController
 import UIKit
 import WebKit
 
 final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
     private static let backgroundMessageHandler = "exBackground"
     private static let appearanceMessageHandler = "exAppearance"
+    private static let hardwareKeyboardMessageHandler = "exHardwareKeyboard"
+    // Shorter than any docked on-screen keyboard; a hardware keyboard only brings up the
+    // shortcuts bar (or nothing), which stays well below this height.
+    private static let softwareKeyboardMinimumHeight: CGFloat = 150
     private static let initialChromeScript = """
     (() => {
       const install = () => {
@@ -37,6 +42,22 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         document.addEventListener("DOMContentLoaded", install, { once: true });
       }
       install();
+    })();
+    """
+    private static let hardwareKeyboardScript = """
+    (() => {
+      if (window.__exMobileHardwareKeyboardInstalled) return;
+      window.__exMobileHardwareKeyboardInstalled = true;
+
+      window.__exMobileSetHardwareKeyboard = (connected) => {
+        const value = connected === true;
+        if (window.__EX_HARDWARE_KEYBOARD__ === value) return;
+        window.__EX_HARDWARE_KEYBOARD__ = value;
+        window.dispatchEvent(new CustomEvent("ex-mobile:hardware-keyboard", { detail: { connected: value } }));
+      };
+
+      const handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.exHardwareKeyboard;
+      if (handler) handler.postMessage("sync");
     })();
     """
     private static let appearanceSyncScript = """
@@ -442,10 +463,17 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
     private let keyboardBackgroundView = UIView()
     private var lastPageBackgroundColor: UIColor?
     private var keyboardVisible = false
+    private var softwareKeyboardVisible = false
     private var pageInterfaceStyle: UIUserInterfaceStyle = .unspecified
 
     override var preferredStatusBarStyle: UIStatusBarStyle {
         resolvedInterfaceStyle == .light ? .darkContent : .lightContent
+    }
+
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        // Capacitor only reads UISupportedInterfaceOrientations (the iPhone list); iPad
+        // windows must follow every orientation for Split View and Stage Manager.
+        UIDevice.current.userInterfaceIdiom == .pad ? .all : super.supportedInterfaceOrientations
     }
 
     override func viewDidLoad() {
@@ -454,6 +482,7 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         applyWebPageBackgroundColor(fallbackBackgroundColor)
         registerKeyboardBackgroundNotifications()
         registerApplicationFocusRestoreNotifications()
+        registerHardwareKeyboardNotifications()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -465,6 +494,13 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         configuration.userContentController.addUserScript(
             WKUserScript(
                 source: Self.initialChromeScript,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
+        configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: Self.hardwareKeyboardScript,
                 injectionTime: .atDocumentStart,
                 forMainFrameOnly: true
             )
@@ -499,6 +535,7 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         )
         configuration.userContentController.add(self, name: Self.backgroundMessageHandler)
         configuration.userContentController.add(self, name: Self.appearanceMessageHandler)
+        configuration.userContentController.add(self, name: Self.hardwareKeyboardMessageHandler)
 
         let webView = AppWebView(frame: frame, configuration: configuration)
         configureWebViewBackground(webView, color: fallbackBackgroundColor)
@@ -513,6 +550,9 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         webView?.configuration.userContentController.removeScriptMessageHandler(
             forName: Self.appearanceMessageHandler
         )
+        webView?.configuration.userContentController.removeScriptMessageHandler(
+            forName: Self.hardwareKeyboardMessageHandler
+        )
     }
 
     override func capacitorDidLoad() {
@@ -521,6 +561,13 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        if message.name == Self.hardwareKeyboardMessageHandler {
+            DispatchQueue.main.async { [weak self] in
+                self?.syncHardwareKeyboardState()
+            }
+            return
+        }
+
         if message.name == Self.appearanceMessageHandler {
             guard let scheme = message.body as? String else {
                 return
@@ -624,6 +671,46 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         )
     }
 
+    private func registerHardwareKeyboardNotifications() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(hardwareKeyboardConnectionDidChange(_:)),
+            name: .GCKeyboardDidConnect,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(hardwareKeyboardConnectionDidChange(_:)),
+            name: .GCKeyboardDidDisconnect,
+            object: nil
+        )
+    }
+
+    @objc private func hardwareKeyboardConnectionDidChange(_ notification: Notification) {
+        DispatchQueue.main.async { [weak self] in
+            self?.syncHardwareKeyboardState()
+        }
+    }
+
+    private func setSoftwareKeyboardVisible(_ visible: Bool) {
+        guard visible != softwareKeyboardVisible else {
+            return
+        }
+
+        softwareKeyboardVisible = visible
+        syncHardwareKeyboardState()
+    }
+
+    // Tells the page whether Return comes from a physical keyboard (send) or the
+    // on-screen keyboard (newline). A connected keyboard does not count while iOS
+    // still shows the on-screen keyboard, e.g. a keyboard folio folded behind the iPad.
+    private func syncHardwareKeyboardState() {
+        let connected = GCKeyboard.coalesced != nil && !softwareKeyboardVisible
+        webView?.evaluateJavaScript(
+            "window.__exMobileSetHardwareKeyboard && window.__exMobileSetHardwareKeyboard(\(connected));"
+        )
+    }
+
     private func registerApplicationFocusRestoreNotifications() {
         NotificationCenter.default.addObserver(
             self,
@@ -642,11 +729,21 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         let keyboardIntersection = view.bounds.intersection(keyboardFrame)
         guard !keyboardIntersection.isNull, keyboardIntersection.height > 0 else {
             keyboardVisible = false
+            setSoftwareKeyboardVisible(false)
             keyboardBackgroundView.isHidden = true
             return
         }
 
         keyboardVisible = true
+        let softwareKeyboard = keyboardIntersection.height >= Self.softwareKeyboardMinimumHeight
+        setSoftwareKeyboardVisible(softwareKeyboard)
+        // Only the on-screen keyboard needs the page color behind its rounded corners. The
+        // shortcuts bar iPad shows for a hardware keyboard floats over the page, as in Safari.
+        guard softwareKeyboard else {
+            keyboardBackgroundView.isHidden = true
+            return
+        }
+
         keyboardBackgroundView.backgroundColor = lastPageBackgroundColor ?? fallbackBackgroundColor
         keyboardBackgroundView.frame = keyboardIntersection
         keyboardBackgroundView.isHidden = false
@@ -656,6 +753,7 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
 
     @objc private func keyboardWillHide(_ notification: Notification) {
         keyboardVisible = false
+        setSoftwareKeyboardVisible(false)
         animateKeyboardBackground(with: notification) { [weak self] in
             self?.keyboardBackgroundView.isHidden = true
         }
@@ -694,7 +792,10 @@ private final class AppWebView: WKWebView {
     let keyboardAccessoryBackdrop = KeyboardAccessoryBackdropView()
 
     override var inputAccessoryView: UIView? {
-        keyboardAccessoryBackdrop
+        // The backdrop stands in for the iPhone form accessory bar. iPad has no such bar, so
+        // there it would add an empty strip above the keyboard, or alone at the bottom of the
+        // screen while a hardware keyboard is in use.
+        UIDevice.current.userInterfaceIdiom == .pad ? nil : keyboardAccessoryBackdrop
     }
 }
 

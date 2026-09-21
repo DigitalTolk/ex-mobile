@@ -40,6 +40,18 @@ The source icon assets live in `resources/`:
 - `resources/android-icon.svg` is the Android source icon.
 - `resources/icon.svg` is the shared fallback used by Capacitor asset generation.
 
+## iPad
+
+The iOS target is universal (`TARGETED_DEVICE_FAMILY = "1,2"`), so iPad runs the app at its native size instead of the scaled iPhone compatibility mode. The chat server's web UI picks its layout from the window width, so iPad windows get the tablet/desktop layout, and narrow Split View or Stage Manager windows fall back to the phone layout.
+
+- iPad windows rotate freely and support Split View, Slide Over and Stage Manager. `BridgeViewController` overrides Capacitor's orientation mask, because Capacitor only reads the iPhone orientation list.
+- The WebView uses `preferredContentMode: 'mobile'`. iPadOS would otherwise default to desktop-class browsing, which ignores the viewport meta tag and gives narrow windows a scaled 980px layout.
+- `UIApplicationSupportsIndirectInputEvents` makes a trackpad or mouse behave like a pointer (hover, right-click) instead of simulated touches.
+- The native shell tells the page whether a hardware keyboard is in use (`window.__EX_HARDWARE_KEYBOARD__` plus the `ex-mobile:hardware-keyboard` window event). With a hardware keyboard, Return sends and Shift+Return adds a newline. The on-screen keyboard's Return always adds a newline.
+- Run it on a simulator with `make ios-ipad` (override `IPAD_SIMULATOR` to pick another device).
+
+Before the first App Store release that includes iPad, upload 13-inch iPad screenshots in App Store Connect. The release lane skips screenshot upload, and App Review submission fails without them. TestFlight builds do not need screenshots. Once a version with iPad support is live, later versions cannot drop it, and fastlane refuses to upload a build that is no longer universal.
+
 ## CI release secrets
 
 GitHub Actions expects these secrets for TestFlight/App Store delivery:

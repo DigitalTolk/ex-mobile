@@ -1,9 +1,10 @@
 SIMULATOR ?= iPhone 17
+IPAD_SIMULATOR ?= iPad Air 13-inch (M3)
 DERIVED_DATA ?= build/DerivedData
 IOS_APP ?= $(DERIVED_DATA)/Build/Products/Debug-iphonesimulator/App.app
 IOS_BUNDLE_ID ?= com.digitaltolk.ex.mobile
 
-.PHONY: check ios ios-build ios-open
+.PHONY: check ios ios-ipad ios-build ios-open
 
 check:
 	npm run lint
@@ -19,6 +20,9 @@ ios: ios-build
 	open -a Simulator
 	xcrun simctl install "$(SIMULATOR)" "$(IOS_APP)"
 	xcrun simctl launch "$(SIMULATOR)" "$(IOS_BUNDLE_ID)"
+
+ios-ipad:
+	$(MAKE) ios SIMULATOR="$(IPAD_SIMULATOR)"
 
 ios-open:
 	npm run build
