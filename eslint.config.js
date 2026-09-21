@@ -18,6 +18,7 @@ export default tseslint.config(
         // inside the page, so browser globals appear in this Node file.
         window: 'readonly',
         EventTarget: 'readonly',
+        URL: 'readonly',
       },
     },
   },

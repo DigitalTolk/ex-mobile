@@ -12,14 +12,14 @@
 // Needs the browsers Playwright ships; on a machine without them, run it in
 // the Playwright image (see README).
 import { createServer } from 'node:http';
-import { readFile, realpath } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { extname, isAbsolute, join, relative, resolve } from 'node:path';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { extname, join, resolve, sep } from 'node:path';
 
 const EX_REPO = resolve(process.env.EX_REPO ?? '../ex');
 const DIST = join(EX_REPO, 'dist');
 const OUT_DIR = resolve(process.env.OUT_DIR ?? 'fastlane/screenshots/en-US');
+const INDEX_HTML = join(DIST, 'index.html');
 const playwright = await import(join(EX_REPO, 'node_modules/playwright-core/index.js'));
 const { webkit } = playwright.default ?? playwright;
 
@@ -31,46 +31,58 @@ const ORIENTATIONS = [
   { name: 'portrait', viewport: { width: 2064 / SCALE, height: 2752 / SCALE } },
 ];
 
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.woff2': 'font/woff2', '.png': 'image/png' };
+const MIME = new Map([
+  ['.html', 'text/html'],
+  ['.js', 'text/javascript'],
+  ['.css', 'text/css'],
+  ['.svg', 'image/svg+xml'],
+  ['.json', 'application/json'],
+  ['.woff2', 'font/woff2'],
+  ['.png', 'image/png'],
+]);
+
+// A request path is untrusted input even though we launched the browser
+// ourselves, so it never reaches the filesystem unchecked: it is resolved
+// inside the built client and refused if it climbs out, before and after
+// realpath() (a symlink inside dist must not point out of it either).
+// Extension-less paths are SPA routes and get index.html; anything else that
+// does not resolve to a real file inside dist is a 404.
+async function fileForRequest(rawUrl) {
+  let requestPath;
+  try {
+    requestPath = decodeURIComponent(new URL(rawUrl, 'http://localhost').pathname);
+  } catch {
+    return null;
+  }
+  if (requestPath.includes('\0')) return null;
+  if (!extname(requestPath)) return INDEX_HTML;
+
+  const root = await realpath(DIST);
+  const candidate = resolve(root, `.${requestPath}`);
+  if (!candidate.startsWith(root + sep)) return null;
+
+  let file;
+  try {
+    file = await realpath(candidate);
+  } catch {
+    return null;
+  }
+  return file.startsWith(root + sep) ? file : null;
+}
 
 function serveDist(port) {
   const server = createServer(async (req, res) => {
-    let requestPath;
-    try {
-      requestPath = decodeURIComponent((req.url ?? '/').split('?')[0]);
-    } catch {
-      requestPath = '/';
+    const readOnly = req.method === 'GET' || req.method === 'HEAD';
+    const file = readOnly ? await fileForRequest(req.url ?? '/') : null;
+    if (!file) {
+      res.writeHead(404).end();
+      return;
     }
-    const distRootResolved = resolve(DIST);
-    let distRoot = distRootResolved;
-    try {
-      distRoot = await realpath(distRootResolved);
-    } catch {
-      distRoot = distRootResolved;
-    }
-    const relativeRequestPath = requestPath.replace(/^\/+/, '');
-    const candidate = resolve(distRoot, relativeRequestPath);
-    const candidateRel = relative(distRoot, candidate);
-    const candidateUnderDist = candidateRel === '' || (!candidateRel.startsWith('..') && !isAbsolute(candidateRel));
-    let target = join(DIST, 'index.html');
-
-    if (requestPath !== '/' && candidateUnderDist && extname(candidate) && existsSync(candidate)) {
-      try {
-        const candidateReal = await realpath(candidate);
-        const rel = relative(distRoot, candidateReal);
-        const isUnderDist = rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
-        if (isUnderDist) {
-          target = candidateReal;
-        }
-      } catch {
-        // Keep SPA fallback target on any path resolution error.
-      }
-    }
-
-    res.writeHead(200, { 'content-type': MIME[extname(target)] ?? 'application/octet-stream' });
-    res.end(await readFile(target));
+    res.writeHead(200, { 'content-type': MIME.get(extname(file)) ?? 'application/octet-stream' });
+    res.end(req.method === 'HEAD' ? undefined : await readFile(file));
   });
-  return new Promise((ok) => server.listen(port, () => ok(server)));
+  // Loopback only — nothing off this machine has any business with it.
+  return new Promise((ok) => server.listen(port, '127.0.0.1', () => ok(server)));
 }
 
 // ---------------------------------------------------------------- fixtures
