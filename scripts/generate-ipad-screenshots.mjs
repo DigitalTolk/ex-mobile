@@ -14,7 +14,7 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { extname, join, resolve } from 'node:path';
+import { extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 
 const EX_REPO = resolve(process.env.EX_REPO ?? '../ex');
@@ -35,10 +35,17 @@ const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css
 
 function serveDist(port) {
   const server = createServer(async (req, res) => {
-    const requestPath = decodeURIComponent((req.url ?? '/').split('?')[0]);
+    let requestPath;
+    try {
+      requestPath = decodeURIComponent((req.url ?? '/').split('?')[0]);
+    } catch {
+      requestPath = '/';
+    }
     const distRoot = resolve(DIST);
-    const candidate = resolve(distRoot, `.${requestPath}`);
-    const isUnderDist = candidate === distRoot || candidate.startsWith(`${distRoot}/`);
+    const relativeRequestPath = requestPath.replace(/^\/+/, '');
+    const candidate = resolve(distRoot, relativeRequestPath);
+    const rel = relative(distRoot, candidate);
+    const isUnderDist = rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
     const file = isUnderDist ? candidate : '';
     const target = requestPath !== '/' && file && existsSync(file) && extname(file) ? file : join(DIST, 'index.html');
     res.writeHead(200, { 'content-type': MIME[extname(target)] ?? 'application/octet-stream' });
