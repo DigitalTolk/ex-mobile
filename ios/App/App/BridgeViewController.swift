@@ -6,7 +6,7 @@ import WebKit
 final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
     private static let backgroundMessageHandler = "exBackground"
     private static let appearanceMessageHandler = "exAppearance"
-    private static let hardwareKeyboardMessageHandler = "exHardwareKeyboard"
+    private static let inputDevicesMessageHandler = "exInputDevices"
     // Shorter than any docked on-screen keyboard; a hardware keyboard only brings up the
     // shortcuts bar (or nothing), which stays well below this height.
     private static let softwareKeyboardMinimumHeight: CGFloat = 150
@@ -44,19 +44,24 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
       install();
     })();
     """
-    private static let hardwareKeyboardScript = """
+    private static let inputDevicesScript = """
     (() => {
-      if (window.__exMobileHardwareKeyboardInstalled) return;
-      window.__exMobileHardwareKeyboardInstalled = true;
+      if (window.__exMobileInputDevicesInstalled) return;
+      window.__exMobileInputDevicesInstalled = true;
 
-      window.__exMobileSetHardwareKeyboard = (connected) => {
+      const report = (global, eventName, connected) => {
         const value = connected === true;
-        if (window.__EX_HARDWARE_KEYBOARD__ === value) return;
-        window.__EX_HARDWARE_KEYBOARD__ = value;
-        window.dispatchEvent(new CustomEvent("ex-mobile:hardware-keyboard", { detail: { connected: value } }));
+        if (window[global] === value) return;
+        window[global] = value;
+        window.dispatchEvent(new CustomEvent(eventName, { detail: { connected: value } }));
       };
 
-      const handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.exHardwareKeyboard;
+      window.__exMobileSetHardwareKeyboard = (connected) =>
+        report("__EX_HARDWARE_KEYBOARD__", "ex-mobile:hardware-keyboard", connected);
+      window.__exMobileSetPointerDevice = (connected) =>
+        report("__EX_POINTER_DEVICE__", "ex-mobile:pointer-device", connected);
+
+      const handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.exInputDevices;
       if (handler) handler.postMessage("sync");
     })();
     """
@@ -482,7 +487,7 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         applyWebPageBackgroundColor(fallbackBackgroundColor)
         registerKeyboardBackgroundNotifications()
         registerApplicationFocusRestoreNotifications()
-        registerHardwareKeyboardNotifications()
+        registerInputDeviceNotifications()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -500,7 +505,7 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         )
         configuration.userContentController.addUserScript(
             WKUserScript(
-                source: Self.hardwareKeyboardScript,
+                source: Self.inputDevicesScript,
                 injectionTime: .atDocumentStart,
                 forMainFrameOnly: true
             )
@@ -535,7 +540,7 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         )
         configuration.userContentController.add(self, name: Self.backgroundMessageHandler)
         configuration.userContentController.add(self, name: Self.appearanceMessageHandler)
-        configuration.userContentController.add(self, name: Self.hardwareKeyboardMessageHandler)
+        configuration.userContentController.add(self, name: Self.inputDevicesMessageHandler)
 
         let webView = AppWebView(frame: frame, configuration: configuration)
         configureWebViewBackground(webView, color: fallbackBackgroundColor)
@@ -551,7 +556,7 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
             forName: Self.appearanceMessageHandler
         )
         webView?.configuration.userContentController.removeScriptMessageHandler(
-            forName: Self.hardwareKeyboardMessageHandler
+            forName: Self.inputDevicesMessageHandler
         )
     }
 
@@ -561,9 +566,9 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        if message.name == Self.hardwareKeyboardMessageHandler {
+        if message.name == Self.inputDevicesMessageHandler {
             DispatchQueue.main.async { [weak self] in
-                self?.syncHardwareKeyboardState()
+                self?.syncInputDeviceState()
             }
             return
         }
@@ -671,24 +676,21 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         )
     }
 
-    private func registerHardwareKeyboardNotifications() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(hardwareKeyboardConnectionDidChange(_:)),
-            name: .GCKeyboardDidConnect,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(hardwareKeyboardConnectionDidChange(_:)),
-            name: .GCKeyboardDidDisconnect,
-            object: nil
-        )
+    private func registerInputDeviceNotifications() {
+        for name in [Notification.Name.GCKeyboardDidConnect, .GCKeyboardDidDisconnect,
+                     .GCMouseDidConnect, .GCMouseDidDisconnect] {
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(inputDeviceConnectionDidChange(_:)),
+                name: name,
+                object: nil
+            )
+        }
     }
 
-    @objc private func hardwareKeyboardConnectionDidChange(_ notification: Notification) {
+    @objc private func inputDeviceConnectionDidChange(_ notification: Notification) {
         DispatchQueue.main.async { [weak self] in
-            self?.syncHardwareKeyboardState()
+            self?.syncInputDeviceState()
         }
     }
 
@@ -698,16 +700,23 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         }
 
         softwareKeyboardVisible = visible
-        syncHardwareKeyboardState()
+        syncInputDeviceState()
     }
 
-    // Tells the page whether Return comes from a physical keyboard (send) or the
-    // on-screen keyboard (newline). A connected keyboard does not count while iOS
-    // still shows the on-screen keyboard, e.g. a keyboard folio folded behind the iPad.
-    private func syncHardwareKeyboardState() {
-        let connected = GCKeyboard.coalesced != nil && !softwareKeyboardVisible
+    // Tells the page which input devices are in use:
+    //  - keyboard: Return sends (a hardware keyboard) or breaks the line (the
+    //    on-screen one). A connected keyboard does not count while iOS still shows
+    //    the on-screen keyboard, e.g. a keyboard folio folded behind the iPad.
+    //  - pointer: a mouse or an iPad Magic Keyboard trackpad, which brings the
+    //    page's hover affordances back in place of their touch stand-ins.
+    private func syncInputDeviceState() {
+        let keyboard = GCKeyboard.coalesced != nil && !softwareKeyboardVisible
+        let pointer = GCMouse.current != nil
         webView?.evaluateJavaScript(
-            "window.__exMobileSetHardwareKeyboard && window.__exMobileSetHardwareKeyboard(\(connected));"
+            """
+            window.__exMobileSetHardwareKeyboard && window.__exMobileSetHardwareKeyboard(\(keyboard));
+            window.__exMobileSetPointerDevice && window.__exMobileSetPointerDevice(\(pointer));
+            """
         )
     }
 

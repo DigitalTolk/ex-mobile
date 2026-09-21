@@ -45,7 +45,9 @@ The iOS target is universal (`TARGETED_DEVICE_FAMILY = "1,2"`), so iPad runs the
 - iPad windows rotate freely and support Split View, Slide Over and Stage Manager. `BridgeViewController` overrides Capacitor's orientation mask, because Capacitor only reads the iPhone orientation list.
 - The WebView uses `preferredContentMode: 'mobile'`. iPadOS would otherwise default to desktop-class browsing, which ignores the viewport meta tag and gives narrow windows a scaled 980px layout.
 - `UIApplicationSupportsIndirectInputEvents` makes a trackpad or mouse behave like a pointer (hover, right-click) instead of simulated touches.
-- The native shell tells the page whether a hardware keyboard is in use (`window.__EX_HARDWARE_KEYBOARD__` plus the `ex-mobile:hardware-keyboard` window event). With a hardware keyboard, Return sends and Shift+Return adds a newline. The on-screen keyboard's Return always adds a newline.
+- The native shell tells the page which input devices are in use:
+  - `window.__EX_HARDWARE_KEYBOARD__` plus the `ex-mobile:hardware-keyboard` window event. With a hardware keyboard, Return sends and Shift+Return adds a newline. The on-screen keyboard's Return always adds a newline.
+  - `window.__EX_POINTER_DEVICE__` plus the `ex-mobile:pointer-device` window event, from a connected mouse or Magic Keyboard trackpad. The web app then shows its hover affordances (message toolbar, sidebar row actions, drag-to-reorder) instead of the touch stand-ins, while touch gestures keep working.
 - Run it on a simulator with `make ios-ipad` (override `IPAD_SIMULATOR` to pick another device).
 
 Before the first App Store release that includes iPad, upload 13-inch iPad screenshots in App Store Connect. The release lane skips screenshot upload, and App Review submission fails without them. TestFlight builds do not need screenshots. Once a version with iPad support is live, later versions cannot drop it, and fastlane refuses to upload a build that is no longer universal.

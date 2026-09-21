@@ -55,17 +55,16 @@ describe('iPad support', () => {
     const source = read('ios/App/App/BridgeViewController.swift');
 
     expect(source).toContain('import GameController');
-    expect(source).toContain('hardwareKeyboardMessageHandler = "exHardwareKeyboard"');
-    expect(source).toMatch(/source: Self\.hardwareKeyboardScript,\s*injectionTime: \.atDocumentStart/);
-    expect(source).toContain('configuration.userContentController.add(self, name: Self.hardwareKeyboardMessageHandler)');
-    expect(source).toContain('forName: Self.hardwareKeyboardMessageHandler');
-    expect(source).toContain('window.__EX_HARDWARE_KEYBOARD__ = value');
-    expect(source).toContain('new CustomEvent("ex-mobile:hardware-keyboard", { detail: { connected: value } })');
+    expect(source).toContain('inputDevicesMessageHandler = "exInputDevices"');
+    expect(source).toMatch(/source: Self\.inputDevicesScript,\s*injectionTime: \.atDocumentStart/);
+    expect(source).toContain('configuration.userContentController.add(self, name: Self.inputDevicesMessageHandler)');
+    expect(source).toContain('forName: Self.inputDevicesMessageHandler');
+    expect(source).toContain('report("__EX_HARDWARE_KEYBOARD__", "ex-mobile:hardware-keyboard", connected)');
+    expect(source).toContain('window.dispatchEvent(new CustomEvent(eventName, { detail: { connected: value } }))');
     expect(source).toContain('handler.postMessage("sync")');
-    expect(source).toContain('name: .GCKeyboardDidConnect');
-    expect(source).toContain('name: .GCKeyboardDidDisconnect');
+    expect(source).toContain('Notification.Name.GCKeyboardDidConnect, .GCKeyboardDidDisconnect');
     expect(source).toContain('GCKeyboard.coalesced != nil && !softwareKeyboardVisible');
-    expect(source).toContain('window.__exMobileSetHardwareKeyboard(\\(connected))');
+    expect(source).toContain('window.__exMobileSetHardwareKeyboard(\\(keyboard))');
     expect(source).toContain('softwareKeyboardMinimumHeight: CGFloat = 150');
     expect(source).toContain('let softwareKeyboard = keyboardIntersection.height >= Self.softwareKeyboardMinimumHeight');
     expect(source).toContain('setSoftwareKeyboardVisible(softwareKeyboard)');
@@ -78,6 +77,15 @@ describe('iPad support', () => {
     expect(source).toMatch(
       /setSoftwareKeyboardVisible\(softwareKeyboard\)[\s\S]*guard softwareKeyboard else {\s*keyboardBackgroundView\.isHidden = true\s*return\s*}[\s\S]*keyboardBackgroundView\.isHidden = false/,
     );
+  });
+
+  it('reports an attached mouse or trackpad so the page can use hover affordances', () => {
+    const source = read('ios/App/App/BridgeViewController.swift');
+
+    expect(source).toContain('.GCMouseDidConnect, .GCMouseDidDisconnect');
+    expect(source).toContain('let pointer = GCMouse.current != nil');
+    expect(source).toContain('report("__EX_POINTER_DEVICE__", "ex-mobile:pointer-device", connected)');
+    expect(source).toContain('window.__exMobileSetPointerDevice(\\(pointer))');
   });
 
   it('guards releases against dropping iPad support', () => {
