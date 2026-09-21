@@ -29,7 +29,9 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - uses: android-actions/setup-android@v3.2.2
+      # v4.0.2+ stopped installing the `tools` SDK package, which Google removed
+      # from the repository — v3 fails the whole job on it.
+      - uses: android-actions/setup-android@v4.0.4
       - run: npm ci
       - run: npm run build
       - run: npx capacitor sync android
