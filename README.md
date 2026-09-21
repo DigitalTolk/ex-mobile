@@ -52,7 +52,9 @@ The iOS target is universal (`TARGETED_DEVICE_FAMILY = "1,2"`), so iPad runs the
 
 ### App Store screenshots
 
-`fastlane/screenshots/en-US/` holds the 13-inch iPad screenshots (2752x2064), rendered from the real chat UI: the web client is built, served locally and driven in WebKit at the exact pixel size App Store Connect asks for, with the API answered from fixtures so no real workspace data is involved.
+`fastlane/screenshots/en-US/` holds the 13-inch iPad screenshots, rendered from the real chat UI: the web client is built, served locally and driven in WebKit at the exact pixel size App Store Connect asks for, with the API answered from fixtures so no real workspace data is involved.
+
+Two sets are generated — `ipad-13-landscape-*` (2752x2064, four shots incl. the thread panel) and `ipad-13-portrait-*` (2064x2752, three shots; the thread panel needs the landscape width to read well). Upload whichever set suits the listing.
 
 ```sh
 cd ../ex && npm run build          # the web client the app loads

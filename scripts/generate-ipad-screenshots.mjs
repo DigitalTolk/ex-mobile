@@ -23,10 +23,13 @@ const OUT_DIR = resolve(process.env.OUT_DIR ?? 'fastlane/screenshots/en-US');
 const playwright = await import(join(EX_REPO, 'node_modules/playwright-core/index.js'));
 const { webkit } = playwright.default ?? playwright;
 
-// App Store Connect, 13-inch iPad: 2752 x 2064 landscape. The iPad renders CSS
-// pixels at 2x, so the viewport is half the image in each direction.
+// App Store Connect, 13-inch iPad: 2752 x 2064 landscape, 2064 x 2752 portrait.
+// The iPad renders CSS pixels at 2x, so each viewport is half its image.
 const SCALE = 2;
-const VIEWPORT = { width: 2752 / SCALE, height: 2064 / SCALE };
+const ORIENTATIONS = [
+  { name: 'landscape', viewport: { width: 2752 / SCALE, height: 2064 / SCALE } },
+  { name: 'portrait', viewport: { width: 2064 / SCALE, height: 2752 / SCALE } },
+];
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.woff2': 'font/woff2', '.png': 'image/png' };
 
@@ -71,6 +74,11 @@ function msg(id, authorID, body, minutesAgo, extra = {}) {
 }
 
 const CHANNEL_MESSAGES = [
+  msg('e1', 'u-me', 'Reminder: the autumn availability sheet closes on Friday — add your blocked days before then.', 320),
+  msg('e2', 'u-amira', 'Added mine. Two court days in Uppsala next week, otherwise open.', 300),
+  msg('e3', 'u-sven', 'Same here. I also updated the travel notes for the Gothenburg assignments.', 286, { reactions: { '👍': ['u-me'] } }),
+  msg('e4', 'u-jonas', 'Is the phone-interpreting rota still Tuesdays and Thursdays?', 250),
+  msg('e5', 'u-me', 'Yes, unchanged. The handbook has the full schedule if you need it.', 240),
   msg('m1', 'u-amira', 'Morning! The Stockholm on-site for Thursday needs one more Arabic interpreter — 09:00 to 12:00.', 182),
   msg('m2', 'u-jonas', 'I can take it. Is it the same address as last month?', 176),
   msg('m3', 'u-amira', 'Yes, same building — entrance on the north side this time.', 170, { reactions: { '👍': ['u-me', 'u-sven'] } }),
@@ -87,7 +95,7 @@ const CHANNEL_MESSAGES = [
   msg('m10', 'u-jonas', 'I can cover it. Sending the confirmation over now.', 12, { reactions: { '✅': ['u-me', 'u-amira', 'u-sven'] } }),
 ];
 const THREAD_REPLIES = [
-  CHANNEL_MESSAGES[3],
+  CHANNEL_MESSAGES.find((m) => m.id === 'm4'),
   msg('t1', 'u-jonas', 'Adding it to my calendar now.', 130, { parentMessageID: 'm4' }),
   msg('t2', 'u-amira', 'I will send the briefing notes over this afternoon.', 112, { parentMessageID: 'm4' }),
   msg('t3', 'u-jonas', 'Perfect — see you Thursday.', 96, { parentMessageID: 'm4' }),
@@ -150,7 +158,8 @@ const ROUTES = [
   [/\/auth\/token\/refresh$/, { accessToken: 'screenshot-token', expiresIn: 3600 }],
   [/\/api\/v1\/users\/me$/, ME],
   [/\/api\/v1\/users\/batch/, PEOPLE],
-  [/\/api\/v1\/users\?/, PEOPLE],
+  // The directory calls /users with no query; keep both shapes answered.
+  [/\/api\/v1\/users(\?|$)/, PEOPLE],
   [/\/api\/v1\/channels$/, CHANNELS],
   [/\/api\/v1\/channels\/[^/]+\/messages\/m4\/thread$/, THREAD_REPLIES],
   [/\/api\/v1\/channels\/[^/]+\/messages\/r1\/thread$/, RELEASE_THREAD],
@@ -176,8 +185,8 @@ const ROUTES = [
       parentType: 'channel',
       threadRootID: 'm4',
       rootAuthorID: 'u-sven',
-      rootBody: CHANNEL_MESSAGES[3].body,
-      rootCreatedAt: CHANNEL_MESSAGES[3].createdAt,
+      rootBody: CHANNEL_MESSAGES.find((m) => m.id === 'm4').body,
+      rootCreatedAt: CHANNEL_MESSAGES.find((m) => m.id === 'm4').createdAt,
       replyCount: 3,
       latestActivityAt: at(96),
     },
@@ -206,7 +215,9 @@ const ROUTES = [
 
 const SHOTS = [
   { name: '01-channel', path: '/channel/interpreters', wait: 'Booking confirmed' },
-  { name: '02-thread', path: '/channel/interpreters', wait: 'Booking confirmed', act: async (page) => {
+  // Three columns need the width; in portrait the thread panel squeezes the
+  // channel too hard to show off.
+  { name: '02-thread', path: '/channel/interpreters', wait: 'Booking confirmed', orientations: ['landscape'], act: async (page) => {
     await page.getByText('3 replies', { exact: false }).first().click();
     await page.getByText('see you Thursday', { exact: false }).first().waitFor();
   } },
@@ -218,62 +229,69 @@ async function main() {
   if (!existsSync(DIST)) throw new Error(`built web client not found at ${DIST} — run "npm run build" in ${EX_REPO}`);
   const server = await serveDist(4178);
   const browser = await webkit.launch();
-  const context = await browser.newContext({
-    viewport: VIEWPORT,
-    deviceScaleFactor: SCALE,
-    hasTouch: true,
-    isMobile: false,
-    userAgent: 'Mozilla/5.0 (iPad; CPU OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15',
-    colorScheme: 'light',
-    permissions: ['notifications'],
-  });
-  // No live server: answer the client's calls from the fixtures, and keep the
-  // WebSocket from retrying behind the UI.
-  await context.route('**/api/v1/**', route => respond(route));
-  await context.route('**/auth/**', route => respond(route));
-  await context.addInitScript(() => {
-    // Permission already answered, so the in-app prompt banner stays away.
-    Object.defineProperty(window, 'Notification', {
-      value: Object.assign(function Notification() {}, {
-        permission: 'granted',
-        requestPermission: async () => 'granted',
-      }),
-    });
-    class QuietSocket extends EventTarget {
-      readyState = 0;
-      close() {}
-      send() {}
-    }
-    Object.defineProperty(window, 'WebSocket', { value: QuietSocket });
-  });
-
   await mkdir(OUT_DIR, { recursive: true });
-  const page = await context.newPage();
-  if (process.env.DEBUG_SCREENSHOTS) {
-    page.on('console', (m) => console.log('[page]', m.type(), m.text().slice(0, 200)));
-    page.on('pageerror', (e) => console.log('[pageerror]', String(e).slice(0, 300)));
-    page.on('requestfailed', (r) => console.log('[failed]', r.url().slice(0, 120)));
-  }
-  for (const shot of SHOTS) {
-    await page.goto(`http://localhost:4178${shot.path}`, { waitUntil: 'domcontentloaded' });
-    try {
-      await page.getByText(shot.wait, { exact: false }).first().waitFor({ timeout: 20_000 });
-    } catch (error) {
-      if (process.env.DEBUG_SCREENSHOTS) {
-        await writeFile('/tmp/debug-screenshot.png', await page.screenshot());
-        console.log('[debug] body text:', (await page.locator('body').innerText()).slice(0, 600));
+
+  for (const orientation of ORIENTATIONS) {
+    const context = await browser.newContext({
+      viewport: orientation.viewport,
+      deviceScaleFactor: SCALE,
+      hasTouch: true,
+      isMobile: false,
+      userAgent: 'Mozilla/5.0 (iPad; CPU OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15',
+      colorScheme: 'light',
+      permissions: ['notifications'],
+    });
+    // No live server: answer the client's calls from the fixtures, and keep the
+    // WebSocket from retrying behind the UI.
+    await context.route('**/api/v1/**', route => respond(route));
+    await context.route('**/auth/**', route => respond(route));
+    await context.addInitScript(() => {
+      // Permission already answered, so the in-app prompt banner stays away.
+      Object.defineProperty(window, 'Notification', {
+        value: Object.assign(function Notification() {}, {
+          permission: 'granted',
+          requestPermission: async () => 'granted',
+        }),
+      });
+      class QuietSocket extends EventTarget {
+        readyState = 0;
+        close() {}
+        send() {}
       }
-      throw error;
+      Object.defineProperty(window, 'WebSocket', { value: QuietSocket });
+    });
+
+    const page = await context.newPage();
+    if (process.env.DEBUG_SCREENSHOTS) {
+      page.on('console', (m) => console.log('[page]', m.type(), m.text().slice(0, 200)));
+      page.on('pageerror', (e) => console.log('[pageerror]', String(e).slice(0, 300)));
+      page.on('requestfailed', (r) => console.log('[failed]', r.url().slice(0, 120)));
     }
-    if (shot.act) await shot.act(page);
-    // A click leaves the cursor on a message row, which reveals its hover
-    // toolbar — park it on empty chrome before capturing.
-    await page.mouse.move(4, 4);
-    await page.waitForTimeout(600);
-    const file = join(OUT_DIR, `ipad-13-${shot.name}.png`);
-    await writeFile(file, await page.screenshot({ scale: 'device' }));
-    console.log(`wrote ${file}`);
+
+    for (const shot of SHOTS) {
+      if (shot.orientations && !shot.orientations.includes(orientation.name)) continue;
+      await page.goto(`http://localhost:4178${shot.path}`, { waitUntil: 'domcontentloaded' });
+      try {
+        await page.getByText(shot.wait, { exact: false }).first().waitFor({ timeout: 20_000 });
+      } catch (error) {
+        if (process.env.DEBUG_SCREENSHOTS) {
+          await writeFile('/tmp/debug-screenshot.png', await page.screenshot());
+          console.log('[debug] body text:', (await page.locator('body').innerText()).slice(0, 600));
+        }
+        throw error;
+      }
+      if (shot.act) await shot.act(page);
+      // A click leaves the cursor on a message row, which reveals its hover
+      // toolbar — park it on empty chrome before capturing.
+      await page.mouse.move(4, 4);
+      await page.waitForTimeout(600);
+      const file = join(OUT_DIR, `ipad-13-${orientation.name}-${shot.name}.png`);
+      await writeFile(file, await page.screenshot({ scale: 'device' }));
+      console.log(`wrote ${file}`);
+    }
+    await context.close();
   }
+
   await browser.close();
   server.close();
 }
