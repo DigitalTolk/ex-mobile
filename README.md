@@ -25,8 +25,6 @@ Before TestFlight/App Store push notifications work, enable Push Notifications f
 
 This is the base native push integration. Rich iOS notification images, Confirmed Delivery, and OneSignal badge features also require adding a Notification Service Extension and App Group in Xcode.
 
-`@onesignal/capacitor-plugin` currently declares a Capacitor 7 peer dependency while the app uses Capacitor 8. The project `.npmrc` keeps `legacy-peer-deps=true` so CI installs match the current OneSignal package until its peer range catches up.
-
 ## Native projects
 
 ```sh
