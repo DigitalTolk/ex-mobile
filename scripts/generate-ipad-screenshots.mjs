@@ -35,9 +35,12 @@ const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css
 
 function serveDist(port) {
   const server = createServer(async (req, res) => {
-    const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-    const file = join(DIST, path);
-    const target = path !== '/' && existsSync(file) && extname(file) ? file : join(DIST, 'index.html');
+    const requestPath = decodeURIComponent((req.url ?? '/').split('?')[0]);
+    const distRoot = resolve(DIST);
+    const candidate = resolve(distRoot, `.${requestPath}`);
+    const isUnderDist = candidate === distRoot || candidate.startsWith(`${distRoot}/`);
+    const file = isUnderDist ? candidate : '';
+    const target = requestPath !== '/' && file && existsSync(file) && extname(file) ? file : join(DIST, 'index.html');
     res.writeHead(200, { 'content-type': MIME[extname(target)] ?? 'application/octet-stream' });
     res.end(await readFile(target));
   });
