@@ -12,7 +12,7 @@
 // Needs the browsers Playwright ships; on a machine without them, run it in
 // the Playwright image (see README).
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, realpath } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -41,13 +41,30 @@ function serveDist(port) {
     } catch {
       requestPath = '/';
     }
-    const distRoot = resolve(DIST);
+    const distRootResolved = resolve(DIST);
+    let distRoot = distRootResolved;
+    try {
+      distRoot = await realpath(distRootResolved);
+    } catch {
+      distRoot = distRootResolved;
+    }
     const relativeRequestPath = requestPath.replace(/^\/+/, '');
     const candidate = resolve(distRoot, relativeRequestPath);
-    const rel = relative(distRoot, candidate);
-    const isUnderDist = rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
-    const file = isUnderDist ? candidate : '';
-    const target = requestPath !== '/' && file && existsSync(file) && extname(file) ? file : join(DIST, 'index.html');
+    let target = join(DIST, 'index.html');
+
+    if (requestPath !== '/' && extname(candidate) && existsSync(candidate)) {
+      try {
+        const candidateReal = await realpath(candidate);
+        const rel = relative(distRoot, candidateReal);
+        const isUnderDist = rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+        if (isUnderDist) {
+          target = candidateReal;
+        }
+      } catch {
+        // Keep SPA fallback target on any path resolution error.
+      }
+    }
+
     res.writeHead(200, { 'content-type': MIME[extname(target)] ?? 'application/octet-stream' });
     res.end(await readFile(target));
   });
