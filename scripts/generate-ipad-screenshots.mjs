@@ -17,11 +17,15 @@ import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { extname, join, resolve, sep } from 'node:path';
 
 const EX_REPO = resolve(process.env.EX_REPO ?? '../ex');
+// Two bundles: the server's web client (what the WebView loads once a server is
+// set) and this app's own shell (the setup screen a first launch opens on).
 const DIST = join(EX_REPO, 'dist');
+const SHELL_DIST = resolve(process.env.SHELL_DIST ?? 'dist');
+const SITES = { server: { root: DIST, port: 4178 }, shell: { root: SHELL_DIST, port: 4179 } };
 const OUT_DIR = resolve(process.env.OUT_DIR ?? 'fastlane/screenshots/en-US');
 // Generated but not uploaded (see DEVICES).
 const ALT_DIR = resolve(process.env.ALT_DIR ?? 'resources/screenshots');
-const INDEX_HTML = join(DIST, 'index.html');
+
 const playwright = await import(join(EX_REPO, 'node_modules/playwright-core/index.js'));
 const { webkit } = playwright.default ?? playwright;
 
@@ -76,7 +80,7 @@ const MIME = new Map([
 // realpath() (a symlink inside dist must not point out of it either).
 // Extension-less paths are SPA routes and get index.html; anything else that
 // does not resolve to a real file inside dist is a 404.
-async function fileForRequest(rawUrl) {
+async function fileForRequest(root, rawUrl) {
   let requestPath;
   try {
     requestPath = decodeURIComponent(new URL(rawUrl, 'http://localhost').pathname);
@@ -84,11 +88,11 @@ async function fileForRequest(rawUrl) {
     return null;
   }
   if (requestPath.includes('\0')) return null;
-  if (!extname(requestPath)) return INDEX_HTML;
+  if (!extname(requestPath)) return join(root, 'index.html');
 
-  const root = await realpath(DIST);
-  const candidate = resolve(root, `.${requestPath}`);
-  if (!candidate.startsWith(root + sep)) return null;
+  const base = await realpath(root);
+  const candidate = resolve(base, `.${requestPath}`);
+  if (!candidate.startsWith(base + sep)) return null;
 
   let file;
   try {
@@ -96,13 +100,13 @@ async function fileForRequest(rawUrl) {
   } catch {
     return null;
   }
-  return file.startsWith(root + sep) ? file : null;
+  return file.startsWith(base + sep) ? file : null;
 }
 
-function serveDist(port) {
+function serveStatic(root, port) {
   const server = createServer(async (req, res) => {
     const readOnly = req.method === 'GET' || req.method === 'HEAD';
-    const file = readOnly ? await fileForRequest(req.url ?? '/') : null;
+    const file = readOnly ? await fileForRequest(root, req.url ?? '/') : null;
     if (!file) {
       res.writeHead(404).end();
       return;
@@ -303,8 +307,10 @@ const SHOTS = [
   },
   { name: '03-direct-message', path: '/conversation/cv-jonas', wait: 'onboarding checklist' },
   { name: '04-threads', path: '/threads', wait: 'Booking confirmed' },
-  // Signed out: the screen the App Store reviewer meets first.
-  { name: '05-sign-in', path: '/login', wait: 'Sign in', signedOut: true },
+  // First launch: the app's own screen, before any server is known.
+  { name: '05-connect-server', site: 'shell', path: '/', wait: 'Connect to your chat server' },
+  // Then the server's own sign-in.
+  { name: '06-sign-in', path: '/login', wait: 'Sign in', signedOut: true },
 ];
 
 // Flipped per shot: a signed-out page needs the session endpoints to refuse.
@@ -312,6 +318,7 @@ let signedOut = false;
 
 async function main() {
   if (!existsSync(DIST)) throw new Error(`built web client not found at ${DIST} — run "npm run build" in ${EX_REPO}`);
+  if (!existsSync(SHELL_DIST)) throw new Error(`built app shell not found at ${SHELL_DIST} — run "npm run build" here`);
   const force = process.argv.includes('--force') || process.env.FORCE_SCREENSHOTS === '1';
   await mkdir(OUT_DIR, { recursive: true });
   await mkdir(ALT_DIR, { recursive: true });
@@ -335,7 +342,9 @@ async function main() {
     return;
   }
 
-  const server = await serveDist(4178);
+  const servers = await Promise.all(
+    Object.values(SITES).map(({ root, port }) => serveStatic(root, port)),
+  );
   const browser = await webkit.launch();
 
   for (const device of DEVICES) {
@@ -381,7 +390,8 @@ async function main() {
     for (const { shot, file } of todo) {
       signedOut = shot.signedOut === true;
       await context.clearCookies();
-      await page.goto(`http://localhost:4178${shot.path}`, { waitUntil: 'domcontentloaded' });
+      const site = SITES[shot.site ?? 'server'];
+      await page.goto(`http://127.0.0.1:${site.port}${shot.path}`, { waitUntil: 'domcontentloaded' });
       try {
         await page.getByText(shot.wait, { exact: false }).first().waitFor({ timeout: 20_000 });
       } catch (error) {
@@ -403,7 +413,7 @@ async function main() {
   }
 
   await browser.close();
-  server.close();
+  for (const server of servers) server.close();
 }
 
 function respond(route) {

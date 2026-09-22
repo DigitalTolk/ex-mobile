@@ -52,7 +52,7 @@ The iOS target is universal (`TARGETED_DEVICE_FAMILY = "1,2"`), so iPad runs the
 
 ### App Store screenshots
 
-`fastlane/screenshots/en-US/` holds the images the release uploads: 13-inch iPad landscape (2752x2064) and 6.9-inch iPhone portrait (1320x2868), covering both device families App Store Connect asks for. They are rendered from the real chat UI — the web client is built, served locally and driven in WebKit at the exact pixel size, with the API answered from fixtures so no real workspace data is involved. An iPad portrait set is generated to `resources/screenshots/` for reference; it is deliberately outside the upload folder so the listing's iPad set stays one orientation.
+`fastlane/screenshots/en-US/` holds the images the release uploads: 13-inch iPad landscape (2752x2064) and 6.9-inch iPhone portrait (1320x2868), covering both device families App Store Connect asks for. Each set runs channel, thread, direct message, threads, the app's own "connect to your server" screen and the server's sign-in screen. They are rendered from the real chat UI — the web client is built, served locally and driven in WebKit at the exact pixel size, with the API answered from fixtures so no real workspace data is involved. An iPad portrait set is generated to `resources/screenshots/` for reference; it is deliberately outside the upload folder so the listing's iPad set stays one orientation.
 
 ```sh
 cd ../ex && npm run build          # the web client the app loads
@@ -60,13 +60,13 @@ cd ../ex-mobile
 EX_REPO=../ex node scripts/generate-ipad-screenshots.mjs
 ```
 
-Without Playwright's browsers installed locally, run that last command inside the Playwright image:
+Without Playwright's browsers installed locally, use the Docker wrapper, which also installs the fonts the screens ask for:
 
 ```sh
-docker run --rm --ipc=host -u $(id -u):$(id -g) -e HOME=/tmp -e EX_REPO=/ex \
-  -v "$PWD":/w -v "$PWD/../ex":/ex -w /w mcr.microsoft.com/playwright:v1.61.1-noble \
-  bash -c 'PLAYWRIGHT_BROWSERS_PATH=/ms-playwright node scripts/generate-ipad-screenshots.mjs'
+./scripts/generate-screenshots-docker.sh [--force]
 ```
+
+iOS ships Futura (the display face) and falls back to SF Pro for body text. Neither can be shipped in CI, so the wrapper maps them through fontconfig to the closest free equivalents — Jost for Futura, Inter for Proxima Nova. The typography is therefore very close to, but not identical to, a real device; everything else (layout, colour, copy) is the shipping UI. Run the generator directly instead and the container falls back to DejaVu, which looks like no device at all.
 
 Existing files are left alone — the generator only renders what is missing, so committed screenshots stay byte-stable. Pass `--force` to redo them (after a UI change, say); fixture timestamps are relative to the render, so a regenerated shot still reads "4 hours ago".
 
