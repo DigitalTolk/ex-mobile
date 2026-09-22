@@ -9,6 +9,10 @@ const config: CapacitorConfig = {
     allowNavigation: ['*'],
   },
   ios: {
+    // iPadOS defaults WKWebView to desktop-class browsing (Macintosh UA, meta viewport
+    // ignored so narrow Split View windows get a scaled 980px layout); keep the
+    // responsive mobile content mode on iPad too.
+    preferredContentMode: 'mobile',
     allowsLinkPreview: false,
     handleApplicationNotifications: false,
   },

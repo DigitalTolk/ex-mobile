@@ -46,11 +46,13 @@ def ios_project_path
   "ios/App/App.xcodeproj"
 end
 
-def assert_iphone_only
+# The App Store never lets a shipped iPad app drop iPad support again, so catch an
+# accidental revert to an iPhone-only target before it uploads.
+def assert_universal_device_family
   project_file = File.expand_path("../#{ios_project_path}/project.pbxproj", __dir__)
-  content = File.read(project_file)
-  if content.match?(/TARGETED_DEVICE_FAMILY = "?1,2"?;/)
-    UI.user_error!("App target supports iPad. Set TARGETED_DEVICE_FAMILY to 1 to avoid required iPad screenshots.")
+  device_families = File.read(project_file).scan(/TARGETED_DEVICE_FAMILY = "?([\d,]+)"?;/).flatten
+  unless device_families.any? && device_families.all? { |family| family == "1,2" }
+    UI.user_error!("App target must support iPhone and iPad. Set TARGETED_DEVICE_FAMILY to \"1,2\", got #{device_families.inspect}.")
   end
 end
 
@@ -141,7 +143,7 @@ platform :ios do
   desc "Upload a PR build to TestFlight"
   lane :testflight_pr do
     setup_ci
-    assert_iphone_only
+    assert_universal_device_family
     install_ci_signing
     set_pr_marketing_version
     set_ci_build_number
@@ -164,7 +166,7 @@ platform :ios do
   desc "Upload a tagged build to App Store Connect"
   lane :app_store_release do
     setup_ci
-    assert_iphone_only
+    assert_universal_device_family
     install_ci_signing
     set_release_marketing_version
     set_ci_build_number

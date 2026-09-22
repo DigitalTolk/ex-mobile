@@ -1,0 +1,61 @@
+# Version updates. Dependabot SECURITY updates run without this file, which is
+# why the repo saw vulnerability bumps but nothing kept GitHub Actions current —
+# until android-actions/setup-android v3 broke against the live Android SDK.
+# Every ecosystem groups its updates into ONE pull request per run.
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    ignore:
+      # The app tracks the Node 24 LTS line (package.json engines, .nvmrc and
+      # the CI setup-node version), so @types/node must follow that runtime
+      # rather than npm's latest.
+      - dependency-name: "@types/node"
+        versions:
+          - ">=25.0.0"
+      # TypeScript stays on the 6.x line deliberately — 7.x is the native-port
+      # compiler and a breaking change for the type-check gate and for
+      # typescript-eslint. Revisit as an intentional migration, not a bump.
+      - dependency-name: "typescript"
+        versions:
+          - ">=7.0.0"
+    groups:
+      npm:
+        patterns:
+          - "*"
+
+  # fastlane (Gemfile), pinned exactly for reproducible release lanes.
+  - package-ecosystem: "bundler"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    groups:
+      bundler:
+        patterns:
+          - "*"
+
+  # Android Gradle plugin + google-services in android/build.gradle. The app
+  # module's dependencies read versions from android/variables.gradle, which
+  # Dependabot cannot resolve, so those stay manual (see native-source tests
+  # pinning kotlin_version / oneSignalVersion).
+  - package-ecosystem: "gradle"
+    directory: "/android"
+    schedule:
+      interval: "daily"
+    groups:
+      gradle:
+        patterns:
+          - "*"

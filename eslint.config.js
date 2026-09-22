@@ -14,6 +14,11 @@ export default tseslint.config(
       globals: {
         console: 'readonly',
         process: 'readonly',
+        // The screenshot script ships small functions that Playwright runs
+        // inside the page, so browser globals appear in this Node file.
+        window: 'readonly',
+        EventTarget: 'readonly',
+        URL: 'readonly',
       },
     },
   },

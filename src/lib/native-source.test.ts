@@ -40,8 +40,8 @@ describe('native navigation source', () => {
   });
 
   it('keeps Kotlin aligned with OneSignal Android dependencies', () => {
-    expect(readAndroidVariables()).toContain("kotlin_version = '1.9.25'");
-    expect(readAndroidVariables()).toContain("oneSignalVersion = '5.8.1'");
+    expect(readAndroidVariables()).toContain("kotlin_version = '2.4.20'");
+    expect(readAndroidVariables()).toContain("oneSignalVersion = '5.10.2'");
     expect(readAndroidBuildGradle()).toContain('details.requested.group == \'org.jetbrains.kotlin\'');
     expect(readAndroidBuildGradle()).toContain('details.useVersion rootProject.ext.kotlin_version');
     expect(readAndroidAppBuildGradle()).toContain('implementation "com.onesignal:OneSignal:$oneSignalVersion"');
