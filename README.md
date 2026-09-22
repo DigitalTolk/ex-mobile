@@ -52,9 +52,7 @@ The iOS target is universal (`TARGETED_DEVICE_FAMILY = "1,2"`), so iPad runs the
 
 ### App Store screenshots
 
-`fastlane/screenshots/en-US/` holds the 13-inch iPad screenshots, rendered from the real chat UI: the web client is built, served locally and driven in WebKit at the exact pixel size App Store Connect asks for, with the API answered from fixtures so no real workspace data is involved.
-
-Two sets are generated — `ipad-13-landscape-*` (2752x2064, four shots incl. the thread panel) and `ipad-13-portrait-*` (2064x2752, three shots; the thread panel needs the landscape width to read well). Upload whichever set suits the listing.
+`fastlane/screenshots/en-US/` holds the images the release uploads: 13-inch iPad landscape (2752x2064) and 6.9-inch iPhone portrait (1320x2868), covering both device families App Store Connect asks for. They are rendered from the real chat UI — the web client is built, served locally and driven in WebKit at the exact pixel size, with the API answered from fixtures so no real workspace data is involved. An iPad portrait set is generated to `resources/screenshots/` for reference; it is deliberately outside the upload folder so the listing's iPad set stays one orientation.
 
 ```sh
 cd ../ex && npm run build          # the web client the app loads
@@ -70,9 +68,11 @@ docker run --rm --ipc=host -u $(id -u):$(id -g) -e HOME=/tmp -e EX_REPO=/ex \
   bash -c 'PLAYWRIGHT_BROWSERS_PATH=/ms-playwright node scripts/generate-ipad-screenshots.mjs'
 ```
 
-The release lane uploads no screenshots (`skip_screenshots: true`), so add these in App Store Connect (App Store > the version > iPad 13") before the release tag is pushed.
+Existing files are left alone — the generator only renders what is missing, so committed screenshots stay byte-stable. Pass `--force` to redo them (after a UI change, say); fixture timestamps are relative to the render, so a regenerated shot still reads "4 hours ago".
 
-Before the first App Store release that includes iPad, upload 13-inch iPad screenshots in App Store Connect. The release lane skips screenshot upload, and App Review submission fails without them. TestFlight builds do not need screenshots. Once a version with iPad support is live, later versions cannot drop it, and fastlane refuses to upload a build that is no longer universal.
+The release lane uploads them **only when they changed since the previous release tag**, because `overwrite_screenshots` replaces the whole listing set — a release that did not touch the images leaves the store listing alone. Adding or regenerating a screenshot is therefore what publishes it, on the next tag.
+
+Before the first App Store release that includes iPad, make sure the App Store Connect version record exists (App Store > "+ Version or Platform"): the release lane uploads the build, the metadata and the screenshots into it and submits for review in one run. Once a version with iPad support is live, later versions cannot drop it, and fastlane refuses to upload a build that is no longer universal.
 
 ## CI release secrets
 
