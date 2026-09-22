@@ -56,6 +56,32 @@ def assert_universal_device_family
   end
 end
 
+# Screenshots are uploaded wholesale (`overwrite_screenshots` replaces the whole
+# listing set), so a release that did not touch them must not rewrite them —
+# and must not re-upload identical images on every tag. Compare the committed
+# screenshots against the previous release tag; with no previous tag there is
+# nothing to compare, so upload.
+def screenshots_changed_since_previous_release?(tag)
+  root = File.expand_path("..", __dir__)
+  previous = sh("git -C #{root.shellescape} describe --tags --abbrev=0 --match 'v*' #{tag.shellescape}^ 2>/dev/null || true", log: false).strip
+  if previous.empty?
+    UI.message("No previous release tag: uploading screenshots.")
+    return true
+  end
+
+  changed = sh(
+    "git -C #{root.shellescape} diff --name-only #{previous.shellescape}..#{tag.shellescape} -- fastlane/screenshots",
+    log: false
+  ).strip
+  if changed.empty?
+    UI.message("Screenshots unchanged since #{previous}: leaving the App Store listing's screenshots alone.")
+    false
+  else
+    UI.message("Screenshots changed since #{previous}: uploading them.")
+    true
+  end
+end
+
 def ci_build_number
   Time.now.utc.strftime("%Y%m%d%H%M%S")
 end
@@ -171,6 +197,7 @@ platform :ios do
     set_release_marketing_version
     set_ci_build_number
     prepare_release_metadata
+    screenshots_changed = screenshots_changed_since_previous_release?(ENV.fetch("GITHUB_REF_NAME"))
     build_app(
       project: ios_project_path,
       scheme: "App",
@@ -185,7 +212,8 @@ platform :ios do
       metadata_path: release_metadata_dir,
       copyright: release_copyright,
       skip_metadata: false,
-      skip_screenshots: true,
+      skip_screenshots: !screenshots_changed,
+      overwrite_screenshots: screenshots_changed,
       precheck_include_in_app_purchases: false,
       automatic_release: true,
       force: true,

@@ -52,9 +52,7 @@ The iOS target is universal (`TARGETED_DEVICE_FAMILY = "1,2"`), so iPad runs the
 
 ### App Store screenshots
 
-`fastlane/screenshots/en-US/` holds the 13-inch iPad screenshots, rendered from the real chat UI: the web client is built, served locally and driven in WebKit at the exact pixel size App Store Connect asks for, with the API answered from fixtures so no real workspace data is involved.
-
-Two sets are generated — `ipad-13-landscape-*` (2752x2064, four shots incl. the thread panel) and `ipad-13-portrait-*` (2064x2752, three shots; the thread panel needs the landscape width to read well). Upload whichever set suits the listing.
+`fastlane/screenshots/en-US/` holds the images the release uploads: 13-inch iPad landscape (2752x2064) and 6.9-inch iPhone portrait (1320x2868), covering both device families App Store Connect asks for. Each set runs channel, thread, direct message, threads, the app's own "connect to your server" screen and the server's sign-in screen. They are rendered from the real chat UI — the web client is built, served locally and driven in WebKit at the exact pixel size, with the API answered from fixtures so no real workspace data is involved. An iPad portrait set is generated to `resources/screenshots/` for reference; it is deliberately outside the upload folder so the listing's iPad set stays one orientation.
 
 ```sh
 cd ../ex && npm run build          # the web client the app loads
@@ -62,17 +60,19 @@ cd ../ex-mobile
 EX_REPO=../ex node scripts/generate-ipad-screenshots.mjs
 ```
 
-Without Playwright's browsers installed locally, run that last command inside the Playwright image:
+Without Playwright's browsers installed locally, use the Docker wrapper, which also installs the fonts the screens ask for:
 
 ```sh
-docker run --rm --ipc=host -u $(id -u):$(id -g) -e HOME=/tmp -e EX_REPO=/ex \
-  -v "$PWD":/w -v "$PWD/../ex":/ex -w /w mcr.microsoft.com/playwright:v1.61.1-noble \
-  bash -c 'PLAYWRIGHT_BROWSERS_PATH=/ms-playwright node scripts/generate-ipad-screenshots.mjs'
+./scripts/generate-screenshots-docker.sh [--force]
 ```
 
-The release lane uploads no screenshots (`skip_screenshots: true`), so add these in App Store Connect (App Store > the version > iPad 13") before the release tag is pushed.
+iOS ships Futura (the display face) and falls back to SF Pro for body text. Neither can be shipped in CI, so the wrapper maps them through fontconfig to the closest free equivalents — Jost for Futura, Inter for Proxima Nova. The typography is therefore very close to, but not identical to, a real device; everything else (layout, colour, copy) is the shipping UI. Run the generator directly instead and the container falls back to DejaVu, which looks like no device at all.
 
-Before the first App Store release that includes iPad, upload 13-inch iPad screenshots in App Store Connect. The release lane skips screenshot upload, and App Review submission fails without them. TestFlight builds do not need screenshots. Once a version with iPad support is live, later versions cannot drop it, and fastlane refuses to upload a build that is no longer universal.
+Existing files are left alone — the generator only renders what is missing, so committed screenshots stay byte-stable. Pass `--force` to redo them (after a UI change, say); fixture timestamps are relative to the render, so a regenerated shot still reads "4 hours ago".
+
+The release lane uploads them **only when they changed since the previous release tag**, because `overwrite_screenshots` replaces the whole listing set — a release that did not touch the images leaves the store listing alone. Adding or regenerating a screenshot is therefore what publishes it, on the next tag.
+
+Before the first App Store release that includes iPad, make sure the App Store Connect version record exists (App Store > "+ Version or Platform"): the release lane uploads the build, the metadata and the screenshots into it and submits for review in one run. Once a version with iPad support is live, later versions cannot drop it, and fastlane refuses to upload a build that is no longer universal.
 
 ## CI release secrets
 

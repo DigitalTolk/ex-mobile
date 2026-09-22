@@ -17,18 +17,51 @@ import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { extname, join, resolve, sep } from 'node:path';
 
 const EX_REPO = resolve(process.env.EX_REPO ?? '../ex');
+// Two bundles: the server's web client (what the WebView loads once a server is
+// set) and this app's own shell (the setup screen a first launch opens on).
 const DIST = join(EX_REPO, 'dist');
+const SHELL_DIST = resolve(process.env.SHELL_DIST ?? 'dist');
+const SITES = { server: { root: DIST, port: 4178 }, shell: { root: SHELL_DIST, port: 4179 } };
 const OUT_DIR = resolve(process.env.OUT_DIR ?? 'fastlane/screenshots/en-US');
-const INDEX_HTML = join(DIST, 'index.html');
+// Generated but not uploaded (see DEVICES).
+const ALT_DIR = resolve(process.env.ALT_DIR ?? 'resources/screenshots');
+
 const playwright = await import(join(EX_REPO, 'node_modules/playwright-core/index.js'));
 const { webkit } = playwright.default ?? playwright;
 
-// App Store Connect, 13-inch iPad: 2752 x 2064 landscape, 2064 x 2752 portrait.
-// The iPad renders CSS pixels at 2x, so each viewport is half its image.
-const SCALE = 2;
-const ORIENTATIONS = [
-  { name: 'landscape', viewport: { width: 2752 / SCALE, height: 2064 / SCALE } },
-  { name: 'portrait', viewport: { width: 2064 / SCALE, height: 2752 / SCALE } },
+const IPAD_UA = 'Mozilla/5.0 (iPad; CPU OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15';
+const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1';
+
+// The sizes App Store Connect asks for, and the viewport each one implies (the
+// device renders CSS pixels at `scale`, so the viewport is the image divided by
+// it). `upload: true` lands in fastlane/screenshots, which the release lane now
+// uploads wholesale — keep ONE iPad orientation there so the listing's iPad set
+// is consistent. The portrait set is generated alongside for reference.
+const DEVICES = [
+  {
+    name: 'ipad-13-landscape',
+    upload: true,
+    scale: 2,
+    viewport: { width: 2752 / 2, height: 2064 / 2 },
+    userAgent: IPAD_UA,
+    isMobile: false,
+  },
+  {
+    name: 'iphone-69',
+    upload: true,
+    scale: 3,
+    viewport: { width: 1320 / 3, height: 2868 / 3 },
+    userAgent: IPHONE_UA,
+    isMobile: true,
+  },
+  {
+    name: 'ipad-13-portrait',
+    upload: false,
+    scale: 2,
+    viewport: { width: 2064 / 2, height: 2752 / 2 },
+    userAgent: IPAD_UA,
+    isMobile: false,
+  },
 ];
 
 const MIME = new Map([
@@ -47,7 +80,7 @@ const MIME = new Map([
 // realpath() (a symlink inside dist must not point out of it either).
 // Extension-less paths are SPA routes and get index.html; anything else that
 // does not resolve to a real file inside dist is a 404.
-async function fileForRequest(rawUrl) {
+async function fileForRequest(root, rawUrl) {
   let requestPath;
   try {
     requestPath = decodeURIComponent(new URL(rawUrl, 'http://localhost').pathname);
@@ -55,11 +88,11 @@ async function fileForRequest(rawUrl) {
     return null;
   }
   if (requestPath.includes('\0')) return null;
-  if (!extname(requestPath)) return INDEX_HTML;
+  if (!extname(requestPath)) return join(root, 'index.html');
 
-  const root = await realpath(DIST);
-  const candidate = resolve(root, `.${requestPath}`);
-  if (!candidate.startsWith(root + sep)) return null;
+  const base = await realpath(root);
+  const candidate = resolve(base, `.${requestPath}`);
+  if (!candidate.startsWith(base + sep)) return null;
 
   let file;
   try {
@@ -67,13 +100,13 @@ async function fileForRequest(rawUrl) {
   } catch {
     return null;
   }
-  return file.startsWith(root + sep) ? file : null;
+  return file.startsWith(base + sep) ? file : null;
 }
 
-function serveDist(port) {
+function serveStatic(root, port) {
   const server = createServer(async (req, res) => {
     const readOnly = req.method === 'GET' || req.method === 'HEAD';
-    const file = readOnly ? await fileForRequest(req.url ?? '/') : null;
+    const file = readOnly ? await fileForRequest(root, req.url ?? '/') : null;
     if (!file) {
       res.writeHead(404).end();
       return;
@@ -86,6 +119,10 @@ function serveDist(port) {
 }
 
 // ---------------------------------------------------------------- fixtures
+// Fixture times are relative to the render, so the UI's "4 hours ago" reads
+// naturally whenever a shot is (re)generated instead of ageing into "3 months
+// ago". Anchored to the top of the hour so one run is internally consistent.
+const NOW = new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000);
 const ME = { id: 'u-me', email: 'you@example.com', displayName: 'Maya Lindqvist', systemRole: 'admin', status: 'active' };
 const PEOPLE = [
   ME,
@@ -105,7 +142,7 @@ const CONVERSATIONS = [
 ];
 
 function at(minutesAgo) {
-  return new Date(Date.parse('2026-09-21T09:40:00Z') - minutesAgo * 60_000).toISOString();
+  return new Date(NOW.getTime() - minutesAgo * 60_000).toISOString();
 }
 function dm(id, authorID, body, minutesAgo, extra = {}) {
   return { id, parentID: 'cv-jonas', parentType: 'conversation', authorID, body, createdAt: at(minutesAgo), ...extra };
@@ -256,29 +293,70 @@ const ROUTES = [
 
 const SHOTS = [
   { name: '01-channel', path: '/channel/interpreters', wait: 'Booking confirmed' },
-  // Three columns need the width; in portrait the thread panel squeezes the
-  // channel too hard to show off.
-  { name: '02-thread', path: '/channel/interpreters', wait: 'Booking confirmed', orientations: ['landscape'], act: async (page) => {
-    await page.getByText('3 replies', { exact: false }).first().click();
-    await page.getByText('see you Thursday', { exact: false }).first().waitFor();
-  } },
+  // Three columns need the width; in iPad portrait the thread panel squeezes
+  // the channel too hard to show off.
+  {
+    name: '02-thread',
+    path: '/channel/interpreters',
+    wait: 'Booking confirmed',
+    devices: ['ipad-13-landscape', 'iphone-69'],
+    act: async (page) => {
+      await page.getByText('3 replies', { exact: false }).first().click();
+      await page.getByText('see you Thursday', { exact: false }).first().waitFor();
+    },
+  },
   { name: '03-direct-message', path: '/conversation/cv-jonas', wait: 'onboarding checklist' },
   { name: '04-threads', path: '/threads', wait: 'Booking confirmed' },
+  // First launch: the app's own screen, before any server is known.
+  { name: '05-connect-server', site: 'shell', path: '/', wait: 'Connect to your chat server' },
+  // Then the server's own sign-in.
+  { name: '06-sign-in', path: '/login', wait: 'Sign in', signedOut: true },
 ];
+
+// Flipped per shot: a signed-out page needs the session endpoints to refuse.
+let signedOut = false;
 
 async function main() {
   if (!existsSync(DIST)) throw new Error(`built web client not found at ${DIST} — run "npm run build" in ${EX_REPO}`);
-  const server = await serveDist(4178);
-  const browser = await webkit.launch();
+  if (!existsSync(SHELL_DIST)) throw new Error(`built app shell not found at ${SHELL_DIST} — run "npm run build" here`);
+  const force = process.argv.includes('--force') || process.env.FORCE_SCREENSHOTS === '1';
   await mkdir(OUT_DIR, { recursive: true });
+  await mkdir(ALT_DIR, { recursive: true });
 
-  for (const orientation of ORIENTATIONS) {
+  // Screenshots are only rendered when missing: the UI prints relative
+  // timestamps ("4 hours ago") against the wall clock, so re-rendering an
+  // existing shot rewrites the file for no reason — and the release lane keys
+  // "should I upload?" off the files having changed. Pass --force to redo them.
+  const work = [];
+  for (const device of DEVICES) {
+    const dir = device.upload ? OUT_DIR : ALT_DIR;
+    for (const shot of SHOTS) {
+      if (shot.devices && !shot.devices.includes(device.name)) continue;
+      const file = join(dir, `${device.name}-${shot.name}.png`);
+      if (!force && existsSync(file)) continue;
+      work.push({ device, shot, file });
+    }
+  }
+  if (work.length === 0) {
+    console.log('screenshots are already present — nothing to render (use --force to redo them)');
+    return;
+  }
+
+  const servers = await Promise.all(
+    Object.values(SITES).map(({ root, port }) => serveStatic(root, port)),
+  );
+  const browser = await webkit.launch();
+
+  for (const device of DEVICES) {
+    const todo = work.filter((item) => item.device === device);
+    if (todo.length === 0) continue;
+
     const context = await browser.newContext({
-      viewport: orientation.viewport,
-      deviceScaleFactor: SCALE,
+      viewport: device.viewport,
+      deviceScaleFactor: device.scale,
       hasTouch: true,
-      isMobile: false,
-      userAgent: 'Mozilla/5.0 (iPad; CPU OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15',
+      isMobile: device.isMobile,
+      userAgent: device.userAgent,
       colorScheme: 'light',
       permissions: ['notifications'],
     });
@@ -309,9 +387,11 @@ async function main() {
       page.on('requestfailed', (r) => console.log('[failed]', r.url().slice(0, 120)));
     }
 
-    for (const shot of SHOTS) {
-      if (shot.orientations && !shot.orientations.includes(orientation.name)) continue;
-      await page.goto(`http://localhost:4178${shot.path}`, { waitUntil: 'domcontentloaded' });
+    for (const { shot, file } of todo) {
+      signedOut = shot.signedOut === true;
+      await context.clearCookies();
+      const site = SITES[shot.site ?? 'server'];
+      await page.goto(`http://127.0.0.1:${site.port}${shot.path}`, { waitUntil: 'domcontentloaded' });
       try {
         await page.getByText(shot.wait, { exact: false }).first().waitFor({ timeout: 20_000 });
       } catch (error) {
@@ -326,7 +406,6 @@ async function main() {
       // toolbar — park it on empty chrome before capturing.
       await page.mouse.move(4, 4);
       await page.waitForTimeout(600);
-      const file = join(OUT_DIR, `ipad-13-${orientation.name}-${shot.name}.png`);
       await writeFile(file, await page.screenshot({ scale: 'device' }));
       console.log(`wrote ${file}`);
     }
@@ -334,11 +413,16 @@ async function main() {
   }
 
   await browser.close();
-  server.close();
+  for (const server of servers) server.close();
 }
 
 function respond(route) {
   const url = route.request().url();
+  // A signed-out page is produced by refusing the session endpoints, which is
+  // what the client sees before anyone has logged in.
+  if (signedOut && /\/auth\/token\/refresh$|\/api\/v1\/users\/me$/.test(url)) {
+    return route.fulfill({ status: 401, contentType: 'application/json', body: '{"error":"unauthorized"}' });
+  }
   const match = ROUTES.find(([pattern]) => pattern.test(url));
   if (process.env.DEBUG_SCREENSHOTS) console.log(match ? '[api ok]' : '[api UNMATCHED]', url.replace('http://localhost:4178', ''));
   if (!match) return route.fulfill({ status: 200, contentType: 'application/json', body: 'null' });
