@@ -1,0 +1,64 @@
+name: Android Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+jobs:
+  lint-test:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/lint-test.yml
+    secrets: inherit
+
+  play-store:
+    runs-on: ubuntu-latest
+    needs: lint-test
+    permissions:
+      contents: read
+    env:
+      VITE_ONESIGNAL_APP_ID: ${{ vars.ONESIGNAL_APP_ID || secrets.ONESIGNAL_APP_ID }}
+      AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+      AWS_REGION: ${{ vars.AWS_REGION || secrets.AWS_REGION || 'eu-north-1' }}
+      BEDROCK_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID || secrets.BEDROCK_MODEL_ID || 'anthropic.claude-sonnet-4-6' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v4.0.4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      - run: npm ci
+      - run: npm run build
+      - run: npx capacitor sync android
+      - name: Generate Play release notes
+        run: node scripts/generate-release-notes.mjs
+      - run: bundle exec fastlane android play_release
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          # The track a tag lands on. Set the repository variable to
+          # "internal" while the store listing is still being finished.
+          PLAY_TRACK: ${{ vars.PLAY_TRACK || 'production' }}
+      - name: Keep the bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: ex-mobile-android
+          path: android/app/build/outputs/bundle/release/app-release.aab
+      - name: Clean signing material
+        if: always()
+        run: rm -rf build/android

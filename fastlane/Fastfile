@@ -165,6 +165,110 @@ def prepare_release_metadata
   )
 end
 
+def android_signing_dir
+  File.expand_path("../build/android/signing", __dir__)
+end
+
+def android_keystore_path
+  File.join(android_signing_dir, "upload.jks")
+end
+
+def android_metadata_dir
+  File.expand_path("../build/android/metadata", __dir__)
+end
+
+def android_aab_path
+  File.expand_path("../android/app/build/outputs/bundle/release/app-release.aab", __dir__)
+end
+
+# Play wants a strictly increasing integer below 2^31. Minutes since the epoch
+# (about 30 million today) outranks every earlier upload and stays in range
+# for a few thousand years.
+def android_version_code
+  (Time.now.utc.to_i / 60).to_s
+end
+
+def install_android_signing
+  FileUtils.mkdir_p(android_signing_dir)
+  File.binwrite(android_keystore_path, Base64.decode64(ENV.fetch("ANDROID_KEYSTORE_BASE64")))
+  UI.user_error!("Could not write #{android_keystore_path}") unless File.exist?(android_keystore_path)
+  %w[ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD].each { |name| ENV.fetch(name) }
+  ENV["ANDROID_KEYSTORE_PATH"] = android_keystore_path
+end
+
+def cleanup_android_signing
+  FileUtils.rm_rf(android_signing_dir)
+  FileUtils.rm_rf(android_metadata_dir)
+end
+
+# supply reads a release's notes from <metadata>/<locale>/changelogs/<versionCode>.txt;
+# Play caps them at 500 characters.
+def prepare_android_changelog(version_code)
+  changelog_dir = File.join(android_metadata_dir, "en-US", "changelogs")
+  FileUtils.rm_rf(android_metadata_dir)
+  FileUtils.mkdir_p(changelog_dir)
+  notes = File.exist?(generated_release_notes_path) ? File.read(generated_release_notes_path) : "Bug fixes and performance improvements.\n"
+  File.write(File.join(changelog_dir, "#{version_code}.txt"), "#{notes.strip[0, 500]}\n")
+end
+
+# Builds the signed release bundle; build.gradle reads the version pair from
+# the environment. Returns the version code it used.
+def build_android_bundle(version_name)
+  version_code = android_version_code
+  ENV["ANDROID_VERSION_CODE"] = version_code
+  ENV["ANDROID_VERSION_NAME"] = version_name
+  gradle(task: "bundle", build_type: "Release", project_dir: "android")
+  UI.user_error!("Gradle produced no bundle at #{android_aab_path}") unless File.exist?(android_aab_path)
+  version_code
+end
+
+platform :android do
+  desc "Upload a PR build to the Play internal track"
+  lane :play_internal do
+    install_android_signing
+    version_code = build_android_bundle(pr_marketing_version)
+    upload_to_play_store(
+      package_name: app_bundle_id,
+      track: "internal",
+      aab: android_aab_path,
+      version_code: version_code.to_i,
+      json_key_data: ENV.fetch("PLAY_SERVICE_ACCOUNT_JSON"),
+      skip_upload_metadata: true,
+      skip_upload_changelogs: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true
+    )
+  end
+
+  desc "Upload a tagged build to Google Play"
+  lane :play_release do
+    install_android_signing
+    version_code = build_android_bundle(release_version_from_tag)
+    prepare_android_changelog(version_code)
+    upload_to_play_store(
+      package_name: app_bundle_id,
+      track: ENV.fetch("PLAY_TRACK", "production"),
+      aab: android_aab_path,
+      version_code: version_code.to_i,
+      json_key_data: ENV.fetch("PLAY_SERVICE_ACCOUNT_JSON"),
+      metadata_path: android_metadata_dir,
+      skip_upload_metadata: true,
+      skip_upload_changelogs: false,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      release_status: "completed"
+    )
+  end
+
+  after_all do
+    cleanup_android_signing
+  end
+
+  error do
+    cleanup_android_signing
+  end
+end
+
 platform :ios do
   desc "Upload a PR build to TestFlight"
   lane :testflight_pr do
