@@ -86,4 +86,12 @@ GitHub Actions expects these secrets for TestFlight/App Store delivery:
 - `IOS_CERTIFICATE_PASSWORD`
 - `IOS_PROVISIONING_PROFILE_BASE64`
 
-Pull requests run lint, tests, coverage, and upload a TestFlight build when iOS signing secrets are present. Tags matching `vN.N.N` upload an App Store build for iOS.
+And these for Google Play delivery:
+
+- `ANDROID_KEYSTORE_BASE64` — the upload keystore (`keytool -genkeypair -v -keystore upload.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000`, then `base64 -i upload.jks`). Enrol the app in Play App Signing so Google holds the app signing key and this one only uploads.
+- `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`
+- `PLAY_SERVICE_ACCOUNT_JSON` — the JSON key of a Play Console service account with release permission for `com.digitaltolk.ex.mobile`.
+
+Google Play only accepts API uploads once an app has had one bundle uploaded by hand: that first upload (done 2026-10-15, internal track) also fixed the upload key, whose SHA-256 fingerprint is `CA:DC:08:3B:62:26:F0:32:85:F6:86:97:9D:3D:F6:41:DF:83:7F:E0:9C:54:5C:38:B8:34:BE:62:A6:AC:AA:A7`. A bundle signed with any other key is refused. The Play listing's phone screenshots are `resources/screenshots/android-phone-*` (1080x2160, the tallest Play accepts), rendered by the same generator in Chromium; they are uploaded by hand in the Play Console.
+
+Pull requests run lint, tests, coverage, upload a TestFlight build and a Play internal-track build. Tags matching `vN.N.N` upload an App Store build for iOS and a Google Play build; the repository variable `PLAY_TRACK` picks the Play track (default `production`; set `internal` until the store listing is complete). Android `versionCode` is minutes since the epoch, stamped by fastlane; `versionName` is the tag.

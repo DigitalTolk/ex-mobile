@@ -27,9 +27,10 @@ const OUT_DIR = resolve(process.env.OUT_DIR ?? 'fastlane/screenshots/en-US');
 const ALT_DIR = resolve(process.env.ALT_DIR ?? 'resources/screenshots');
 
 const playwright = await import(join(EX_REPO, 'node_modules/playwright-core/index.js'));
-const { webkit } = playwright.default ?? playwright;
+const { webkit, chromium } = playwright.default ?? playwright;
 
 const IPAD_UA = 'Mozilla/5.0 (iPad; CPU OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15';
+const ANDROID_UA = 'Mozilla/5.0 (Linux; Android 16; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Mobile Safari/537.36';
 const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1';
 
 // The sizes App Store Connect asks for, and the viewport each one implies (the
@@ -61,6 +62,19 @@ const DEVICES = [
     viewport: { width: 2064 / 2, height: 2752 / 2 },
     userAgent: IPAD_UA,
     isMobile: false,
+  },
+  // Google Play phone screenshots: Android's WebView is Chromium, and Play
+  // refuses images more than twice as long as they are wide (the 6.9-inch
+  // iPhone set is 1320x2868), so 1080x2160 is the tallest it takes. Uploaded
+  // by hand in the Play Console; the release lane ships only the bundle.
+  {
+    name: 'android-phone',
+    upload: false,
+    engine: 'chromium',
+    scale: 3,
+    viewport: { width: 1080 / 3, height: 2160 / 3 },
+    userAgent: ANDROID_UA,
+    isMobile: true,
   },
 ];
 
@@ -299,7 +313,7 @@ const SHOTS = [
     name: '02-thread',
     path: '/channel/interpreters',
     wait: 'Booking confirmed',
-    devices: ['ipad-13-landscape', 'iphone-69'],
+    devices: ['ipad-13-landscape', 'iphone-69', 'android-phone'],
     act: async (page) => {
       await page.getByText('3 replies', { exact: false }).first().click();
       await page.getByText('see you Thursday', { exact: false }).first().waitFor();
@@ -345,13 +359,16 @@ async function main() {
   const servers = await Promise.all(
     Object.values(SITES).map(({ root, port }) => serveStatic(root, port)),
   );
-  const browser = await webkit.launch();
+  const engines = { webkit, chromium };
+  const browsers = {};
 
   for (const device of DEVICES) {
     const todo = work.filter((item) => item.device === device);
     if (todo.length === 0) continue;
 
-    const context = await browser.newContext({
+    const engine = device.engine ?? 'webkit';
+    browsers[engine] ??= await engines[engine].launch();
+    const context = await browsers[engine].newContext({
       viewport: device.viewport,
       deviceScaleFactor: device.scale,
       hasTouch: true,
@@ -412,7 +429,7 @@ async function main() {
     await context.close();
   }
 
-  await browser.close();
+  for (const browser of Object.values(browsers)) await browser.close();
   for (const server of servers) server.close();
 }
 
