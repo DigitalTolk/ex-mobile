@@ -1,13 +1,13 @@
 {
-  "originHash" : "59efb437d735e26fb51584d3c5771251d4a6de7fa168caccba224f5bfe9b2dcb",
+  "originHash" : "73418eb6a9d33aed9d96f71bfd95e263183f12dee19e836888f0634d3e60d427",
   "pins" : [
     {
       "identity" : "capacitor-swift-pm",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/ionic-team/capacitor-swift-pm.git",
       "state" : {
-        "revision" : "0b6882e9a3288342aacf36348e5a94e4f1dd7b13",
-        "version" : "8.5.2"
+        "revision" : "4c7f346d16196e21fbe23d4a7a6fc7af62af6742",
+        "version" : "8.5.3"
       }
     },
     {
@@ -15,7 +15,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/OneSignal/OneSignal-XCFramework",
       "state" : {
-        "revision" : "4eb482f03c1818af87d336e854121ad7dc9bf4cf",
+        "revision" : "3b674e6e5fa647560d71ca7fe41a77907fa8c21e",
         "version" : "5.6.2"
       }
     }

@@ -15,6 +15,10 @@ android {
         versionCode = (System.getenv("ANDROID_VERSION_CODE") ?: "1").toInteger()
         versionName = System.getenv("ANDROID_VERSION_NAME") ?: "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // The OneSignal app id the web build gets as VITE_ONESIGNAL_APP_ID (CI
+        // sets it for the whole release job). Native code initializes OneSignal
+        // with it at launch, before the server page can call into the plugin.
+        buildConfigField "String", "ONESIGNAL_APP_ID", "\"${(System.getenv("VITE_ONESIGNAL_APP_ID") ?: "").trim()}\""
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
@@ -34,6 +38,9 @@ android {
                 keyPassword System.getenv("ANDROID_KEY_PASSWORD")
             }
         }
+    }
+    buildFeatures {
+        buildConfig = true
     }
     buildTypes {
         release {
@@ -57,6 +64,8 @@ dependencies {
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    // ServerBridgeScript calls WebViewCompat directly; Capacitor only has webkit as its own implementation dependency.
+    implementation "androidx.webkit:webkit:$androidxWebkitVersion"
     implementation "com.onesignal:OneSignal:$oneSignalVersion"
     implementation project(':capacitor-android')
     testImplementation "junit:junit:$junitVersion"

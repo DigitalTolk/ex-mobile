@@ -12,16 +12,19 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.onesignal.Continue;
 import com.onesignal.OneSignal;
 import com.onesignal.notifications.INotificationClickEvent;
 import com.onesignal.notifications.INotificationClickListener;
+import com.onesignal.user.state.IUserStateObserver;
+import com.onesignal.user.state.UserChangedState;
 
 import java.util.Map;
 
 import org.json.JSONObject;
 
 @CapacitorPlugin(name = "ServerNavigation")
-public class ServerNavigationPlugin extends Plugin implements INotificationClickListener {
+public class ServerNavigationPlugin extends Plugin implements INotificationClickListener, IUserStateObserver {
     private static final String STORAGE_NAME = "CapacitorStorage";
     private static final String SERVER_URL_KEY = "server-url";
     private static final String MOBILE_CALLBACK = "ex://mobile/auth/callback";
@@ -29,6 +32,7 @@ public class ServerNavigationPlugin extends Plugin implements INotificationClick
     private static final String PENDING_NOTIFICATION_URL_TIMESTAMP_KEY = "ex.pending-notification-url-timestamp";
     private static final long PENDING_NOTIFICATION_URL_TTL_MS = 30_000;
     private boolean notificationClickListenerRegistered;
+    private boolean userStateObserverRegistered;
 
     @Override
     public void load() {
@@ -47,6 +51,7 @@ public class ServerNavigationPlugin extends Plugin implements INotificationClick
 
         getActivity().runOnUiThread(() -> {
             Uri targetUrl = consumePendingNotificationUrl(getContext(), url);
+            ServerBridgeScript.prepare(getBridge(), url);
             getBridge().getWebView().loadUrl((targetUrl == null ? url : targetUrl).toString());
             call.resolve(new JSObject());
         });
@@ -93,16 +98,47 @@ public class ServerNavigationPlugin extends Plugin implements INotificationClick
         return null;
     }
 
+    // OneSignal throws until the shell has initialized it, so both
+    // registrations are retried from registerNotificationRouting.
     private void registerNotificationClickListener() {
-        if (notificationClickListenerRegistered) {
+        if (!notificationClickListenerRegistered) {
+            try {
+                OneSignal.getNotifications().addClickListener(this);
+                notificationClickListenerRegistered = true;
+            } catch (Exception exception) {
+                notificationClickListenerRegistered = false;
+            }
+        }
+
+        if (!userStateObserverRegistered) {
+            try {
+                OneSignal.getUser().addObserver(this);
+                userStateObserverRegistered = true;
+            } catch (Exception exception) {
+                userStateObserverRegistered = false;
+            }
+        }
+    }
+
+    // Android 13+ only delivers notifications after a runtime grant. The
+    // shell's own request runs while it is navigating to the server and can be
+    // cut off, so ask again the moment the server page signs the user in to
+    // OneSignal: that is when a push can actually be addressed to them.
+    // canRequestPermission turns false once the user has declined, so this
+    // never nags.
+    @Override
+    public void onUserStateChange(UserChangedState state) {
+        String externalId = state.getCurrent().getExternalId();
+        if (externalId == null || externalId.isEmpty()) {
             return;
         }
 
         try {
-            OneSignal.getNotifications().addClickListener(this);
-            notificationClickListenerRegistered = true;
+            if (!OneSignal.getNotifications().getPermission() && OneSignal.getNotifications().getCanRequestPermission()) {
+                OneSignal.getNotifications().requestPermission(false, Continue.none());
+            }
         } catch (Exception exception) {
-            notificationClickListenerRegistered = false;
+            // Not initialized or no activity yet: the shell's request covers it.
         }
     }
 
@@ -114,7 +150,10 @@ public class ServerNavigationPlugin extends Plugin implements INotificationClick
         }
 
         storePendingNotificationUrl(getContext(), url);
-        getBridge().getWebView().post(() -> getBridge().getWebView().loadUrl(url.toString()));
+        getBridge().getWebView().post(() -> {
+            ServerBridgeScript.prepare(getBridge(), url);
+            getBridge().getWebView().loadUrl(url.toString());
+        });
     }
 
     private Uri notificationUrl(INotificationClickEvent event) {
@@ -206,7 +245,10 @@ public class ServerNavigationPlugin extends Plugin implements INotificationClick
             callbackTargetBuilder.appendQueryParameter("code", code);
         }
         Uri finalCallbackTargetURL = callbackTargetBuilder.build();
-        bridge.getWebView().post(() -> bridge.getWebView().loadUrl(finalCallbackTargetURL.toString()));
+        bridge.getWebView().post(() -> {
+            ServerBridgeScript.prepare(bridge, finalCallbackTargetURL);
+            bridge.getWebView().loadUrl(finalCallbackTargetURL.toString());
+        });
         return true;
     }
 
