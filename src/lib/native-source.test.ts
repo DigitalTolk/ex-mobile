@@ -14,7 +14,17 @@ const stylesPath = resolve(process.cwd(), 'src/styles.css');
 const androidAppBuildGradlePath = resolve(process.cwd(), 'android/app/build.gradle');
 const androidVariablesPath = resolve(process.cwd(), 'android/variables.gradle');
 const androidBuildGradlePath = resolve(process.cwd(), 'android/build.gradle');
+const androidBridgeScriptPath = resolve(
+  process.cwd(),
+  'android/app/src/main/java/com/digitaltolk/ex/mobile/ServerBridgeScript.java',
+);
+const androidMainActivityPath = resolve(
+  process.cwd(),
+  'android/app/src/main/java/com/digitaltolk/ex/mobile/MainActivity.java',
+);
 const readAndroidNavigationPlugin = () => readFileSync(androidNavigationPluginPath, 'utf8');
+const readAndroidBridgeScript = () => readFileSync(androidBridgeScriptPath, 'utf8');
+const readAndroidMainActivity = () => readFileSync(androidMainActivityPath, 'utf8');
 const readIosNavigationPlugin = () => readFileSync(iosNavigationPluginPath, 'utf8');
 const readIosBridgeViewController = () => readFileSync(iosBridgeViewControllerPath, 'utf8');
 const readStyles = () => readFileSync(stylesPath, 'utf8');
@@ -37,6 +47,49 @@ describe('native navigation source', () => {
     expect(source).toContain('getQueryParameter("token")');
     expect(source).toContain('"/auth/desktop/complete"');
     expect(source).toContain('"/oidc/callback"');
+  });
+
+  it('gives the Android server page the Capacitor bridge before every server load', () => {
+    // Capacitor Android only injects into https://localhost; without this the
+    // server page had no window.Capacitor and OneSignal.login never ran.
+    const script = readAndroidBridgeScript();
+    expect(script).toContain('WebViewCompat.addDocumentStartJavaScript(webView, script, Collections.singleton(origin))');
+    expect(script).toContain('current.handler.remove()');
+    expect(script).toContain('getDeclaredMethod("getJSInjector")');
+    expect(readAndroidAppBuildGradle()).toContain('implementation "androidx.webkit:webkit:$androidxWebkitVersion"');
+
+    const plugin = readAndroidNavigationPlugin();
+    expect(plugin.match(/ServerBridgeScript\.prepare\(/g)).toHaveLength(3);
+    expect(plugin).toContain('ServerBridgeScript.prepare(getBridge(), url);\n            getBridge().getWebView().loadUrl((targetUrl == null ? url : targetUrl).toString());');
+    expect(plugin).toContain('ServerBridgeScript.prepare(bridge, finalCallbackTargetURL);');
+  });
+
+  it('asks Android for notification permission once the server signs the user in to OneSignal', () => {
+    const plugin = readAndroidNavigationPlugin();
+    expect(plugin).toContain('OneSignal.getUser().addObserver(this)');
+    expect(plugin).toContain('public void onUserStateChange(UserChangedState state)');
+    expect(plugin).toContain('OneSignal.getNotifications().getCanRequestPermission()');
+    expect(plugin).toContain('OneSignal.getNotifications().requestPermission(false, Continue.none())');
+  });
+
+  it('never lets the Android server page call OneSignal before it is initialized', () => {
+    // The Android plugin throws on login() before init and takes the app down.
+    expect(readAndroidAppBuildGradle()).toContain('buildConfigField "String", "ONESIGNAL_APP_ID"');
+    expect(readAndroidMainActivity()).toContain('OneSignal.initWithContext(this, BuildConfig.ONESIGNAL_APP_ID)');
+    expect(readAndroidBridgeScript()).toContain('delete window.Capacitor.Plugins.OneSignalCapacitor');
+  });
+
+  it('makes Android Back walk the server history and background the app instead of closing it', () => {
+    const activity = readAndroidMainActivity();
+    expect(activity).toContain('getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true)');
+    expect(activity).toContain('webView.goBack()');
+    // The page decides first: close a sheet, show the channel list, or leave.
+    expect(activity).toContain('webView.evaluateJavascript(ASK_PAGE_BACK');
+    expect(activity).toContain('window.__exMobileBack');
+    expect(activity).toContain('"\\"handled\\"".equals(result)');
+    expect(activity).toContain('"\\"background\\"".equals(result)');
+    expect(activity).toContain('moveTaskToBack(true)');
+    expect(activity).toContain('!previousOrigin.equals(localOrigin)');
   });
 
   it('keeps Kotlin aligned with OneSignal Android dependencies', () => {

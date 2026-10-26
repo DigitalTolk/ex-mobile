@@ -754,16 +754,34 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         }
 
         keyboardBackgroundView.backgroundColor = lastPageBackgroundColor ?? fallbackBackgroundColor
-        keyboardBackgroundView.frame = keyboardIntersection
+        // Move with the keyboard, never ahead of it: jumping straight to the end frame put an
+        // opaque page-coloured block over the composer for the whole slide whenever the keyboard
+        // grew (a predictions or actions strip, the emoji keyboard), so the composer seemed to
+        // vanish and come back. A first show starts from where the keyboard starts.
+        if keyboardBackgroundView.isHidden {
+            keyboardBackgroundView.frame = keyboardBeginFrame(notification, matching: keyboardIntersection)
+        }
         keyboardBackgroundView.isHidden = false
         view.bringSubviewToFront(keyboardBackgroundView)
-        animateKeyboardBackground(with: notification)
+        animateKeyboardBackground(with: notification, to: keyboardIntersection)
+    }
+
+    private func keyboardBeginFrame(_ notification: Notification, matching endFrame: CGRect) -> CGRect {
+        if let beginFrame = notification.userInfo?[UIResponder.keyboardFrameBeginUserInfoKey] as? CGRect {
+            let intersection = view.bounds.intersection(view.convert(beginFrame, from: nil))
+            if !intersection.isNull, intersection.height > 0 {
+                return intersection
+            }
+        }
+        return CGRect(x: endFrame.minX, y: view.bounds.maxY, width: endFrame.width, height: 0)
     }
 
     @objc private func keyboardWillHide(_ notification: Notification) {
         keyboardVisible = false
         setSoftwareKeyboardVisible(false)
-        animateKeyboardBackground(with: notification) { [weak self] in
+        let current = keyboardBackgroundView.frame
+        let offscreen = CGRect(x: current.minX, y: view.bounds.maxY, width: current.width, height: 0)
+        animateKeyboardBackground(with: notification, to: offscreen) { [weak self] in
             self?.keyboardBackgroundView.isHidden = true
         }
     }
@@ -782,7 +800,11 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         webView?.evaluateJavaScript("window.__exMobileRestoreFocus && window.__exMobileRestoreFocus();")
     }
 
-    private func animateKeyboardBackground(with notification: Notification, completion: (() -> Void)? = nil) {
+    private func animateKeyboardBackground(
+        with notification: Notification,
+        to frame: CGRect? = nil,
+        completion: (() -> Void)? = nil
+    ) {
         let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval ?? 0
         let curveValue = notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 0
         let options = UIView.AnimationOptions(rawValue: curveValue << 16)
@@ -791,7 +813,12 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
             withDuration: duration,
             delay: 0,
             options: options,
-            animations: { self.view.layoutIfNeeded() },
+            animations: {
+                if let frame {
+                    self.keyboardBackgroundView.frame = frame
+                }
+                self.view.layoutIfNeeded()
+            },
             completion: { _ in completion?() }
         )
     }
