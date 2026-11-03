@@ -1,0 +1,16 @@
+<!-- Status-bar notification icon. OneSignal picks it up by name; without it the
+     SDK shows its own bell. Android tints it to a single colour, so the logo is a
+     solid bubble with the three dots cut out (evenOdd), not the coloured launcher art. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M12,12 H52 A6,6 0 0 1 58,18 V40 A6,6 0 0 1 52,46 H28 L18,56 V46 H12 A6,6 0 0 1 6,40 V18 A6,6 0 0 1 12,12 Z
+            M16,29 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 Z
+            M28,29 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 Z
+            M40,29 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 Z" />
+</vector>
