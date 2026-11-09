@@ -50,7 +50,7 @@ jobs:
           IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
           IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v3.0.3
+        uses: softprops/action-gh-release@v3.0.4
         with:
           tag_name: ${{ github.ref_name }}
           name: ex Mobile ${{ github.ref_name }}
