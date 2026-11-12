@@ -481,6 +481,16 @@ final class BridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         UIDevice.current.userInterfaceIdiom == .pad ? .all : super.supportedInterfaceOrientations
     }
 
+    // server.errorPath is for Android's error page. WKWebView reports every
+    // cancelled or superseded navigation as a failure too, so on iOS it would
+    // swap a working chat for the error screen; failed loads keep the shell's
+    // loader and its "Change server" button instead.
+    override func instanceDescriptor() -> InstanceDescriptor {
+        let descriptor = super.instanceDescriptor()
+        descriptor.errorPath = nil
+        return descriptor
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         configureKeyboardBackgroundView()

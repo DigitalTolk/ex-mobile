@@ -90,12 +90,24 @@ public class ServerNavigationPlugin extends Plugin implements INotificationClick
             return true;
         }
 
-        if (shouldOpenExternally(getContext(), url)) {
+        if (shouldOpenExternally(getContext(), url) && !isAppURL(url)) {
             openExternal(url);
             return true;
         }
 
         return null;
+    }
+
+    // The shell's own pages (https://localhost) load in place: the error page
+    // (server.errorPath) reopens the server or the server field through them.
+    private boolean isAppURL(Uri url) {
+        String localURL = getBridge().getLocalUrl();
+        if (localURL == null) {
+            return false;
+        }
+
+        String appOrigin = ServerBridgeScript.origin(Uri.parse(localURL));
+        return appOrigin != null && appOrigin.equals(ServerBridgeScript.origin(url));
     }
 
     // OneSignal throws until the shell has initialized it, so both

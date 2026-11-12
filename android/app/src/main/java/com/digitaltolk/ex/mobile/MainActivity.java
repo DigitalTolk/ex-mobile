@@ -3,10 +3,14 @@ package com.digitaltolk.ex.mobile;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.view.View;
 import android.webkit.WebBackForwardList;
 import android.webkit.WebView;
 
 import androidx.activity.OnBackPressedCallback;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import com.getcapacitor.BridgeActivity;
 import com.onesignal.OneSignal;
@@ -16,6 +20,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(ServerNavigationPlugin.class);
         super.onCreate(savedInstanceState);
+        keepWebViewInsideSystemBars();
         // OneSignal must be initialized before anything calls into it: its
         // Android plugin throws (and takes the app down) on login() before
         // init, and the server page logs the user in as soon as they sign in.
@@ -33,6 +38,28 @@ public class MainActivity extends BridgeActivity {
                 handleBack();
             }
         });
+    }
+
+    // Android 15+ draws every app edge to edge. Capacitor's default then hands
+    // the page the bar heights through env(safe-area-inset-*), which some
+    // WebView builds report as 0, so the chat's bottom tab bar ended up under
+    // the system navigation bar. Pad the window by the bars (and the keyboard,
+    // which edge to edge no longer resizes for) instead, so the WebView only
+    // ever gets the safe area, and tell the page there is nothing left to
+    // avoid. capacitor.config.ts turns Capacitor's own handling off.
+    private void keepWebViewInsideSystemBars() {
+        final int bars = WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout();
+        View decor = getWindow().getDecorView();
+        ViewCompat.setOnApplyWindowInsetsListener(decor, (view, insets) -> {
+            Insets safe = insets.getInsets(bars);
+            boolean keyboardVisible = insets.isVisible(WindowInsetsCompat.Type.ime());
+            int bottom = keyboardVisible ? insets.getInsets(WindowInsetsCompat.Type.ime()).bottom : safe.bottom;
+            view.setPadding(safe.left, safe.top, safe.right, bottom);
+            // Not CONSUMED: that stops the WebView recalculating its insets
+            // (https://issues.chromium.org/issues/461332423).
+            return new WindowInsetsCompat.Builder(insets).setInsets(bars, Insets.NONE).build();
+        });
+        ViewCompat.requestApplyInsets(decor);
     }
 
     @Override

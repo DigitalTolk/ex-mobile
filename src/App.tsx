@@ -14,6 +14,16 @@ import { isSameServerUrl } from './lib/url';
 type View = 'loading' | 'setup' | 'redirecting';
 const STORED_SERVER_REDIRECT_DELAY_MS = 750;
 const SERVER_RECOVERY_DELAY_MS = 15000;
+// Set by the error page's "Change server" (src/error.ts): open the server
+// field, filled in, instead of the stored server.
+const CHANGE_SERVER_PARAM = 'change-server';
+
+function takeChangeServerRequest(): boolean {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has(CHANGE_SERVER_PARAM)) return false;
+  window.history.replaceState(null, '', window.location.pathname);
+  return true;
+}
 
 export default function App() {
   const [view, setView] = useState<View>('loading');
@@ -23,12 +33,13 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
+    const changeServer = takeChangeServerRequest();
     loadStoredSession()
       .then((stored) => {
         if (cancelled) return;
         const storedServerUrl = stored.serverUrl;
         setServerUrl(storedServerUrl);
-        if (storedServerUrl) {
+        if (storedServerUrl && !changeServer) {
           setView('redirecting');
           void enableNativeNotificationsForServer(storedServerUrl);
           redirectTimerRef.current = setTimeout(() => {
