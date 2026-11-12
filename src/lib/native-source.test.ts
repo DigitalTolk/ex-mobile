@@ -233,4 +233,36 @@ describe('native navigation source', () => {
     expect(source).toContain('webView.underPageBackgroundColor = color');
     expect(source).toContain('UIColor(cssColor: cssColor)');
   });
+
+  it('shows the retry screen on Android when a server page fails to load, never on iOS', () => {
+    const config = readFileSync(resolve(process.cwd(), 'capacitor.config.ts'), 'utf8');
+    expect(config).toMatch(/server: {[^}]*errorPath: 'error\.html',/);
+    // Built as its own page next to index.html.
+    expect(readFileSync(resolve(process.cwd(), 'vite.config.ts'), 'utf8')).toContain("error: resolve(import.meta.dirname, 'error.html')");
+    const page = readFileSync(resolve(process.cwd(), 'error.html'), 'utf8');
+    expect(page).toContain('id="retry"');
+    expect(page).toContain('id="change-server"');
+    expect(page).toContain("import { initErrorPage } from '/src/error.ts'");
+    // Its buttons go to the shell's own origin, which must load in place, not in the browser.
+    const plugin = readAndroidNavigationPlugin();
+    expect(plugin).toContain('shouldOpenExternally(getContext(), url) && !isAppURL(url)');
+    expect(plugin).toContain('ServerBridgeScript.origin(Uri.parse(localURL))');
+    // WKWebView fails every cancelled navigation: iOS drops the error page.
+    const ios = readIosBridgeViewController();
+    expect(ios).toContain('override func instanceDescriptor() -> InstanceDescriptor');
+    expect(ios).toContain('descriptor.errorPath = nil');
+  });
+
+  it('keeps the Android WebView inside the system bars so the tab bar never sits under them', () => {
+    const config = readFileSync(resolve(process.cwd(), 'capacitor.config.ts'), 'utf8');
+    expect(config).toMatch(/SystemBars: {[^}]*insetsHandling: 'disable',/);
+    const activity = readAndroidMainActivity();
+    expect(activity).toContain('keepWebViewInsideSystemBars();');
+    expect(activity).toContain('ViewCompat.setOnApplyWindowInsetsListener(decor');
+    expect(activity).toContain('WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()');
+    // The keyboard: edge to edge no longer resizes the window for it.
+    expect(activity).toContain('keyboardVisible ? insets.getInsets(WindowInsetsCompat.Type.ime()).bottom : safe.bottom');
+    expect(activity).toContain('view.setPadding(safe.left, safe.top, safe.right, bottom)');
+    expect(activity).toContain('setInsets(bars, Insets.NONE)');
+  });
 });

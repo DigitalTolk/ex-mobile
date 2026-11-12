@@ -92,6 +92,25 @@ describe('App', () => {
     expect(SplashScreen.hide).toHaveBeenCalledTimes(1);
   });
 
+  it("opens the filled-in server field instead of the stored server when the error page asks to change it", async () => {
+    window.history.replaceState(null, '', '/?change-server');
+    vi.mocked(loadStoredSession).mockResolvedValue({
+      serverUrl: 'https://bad.example.com',
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: 'Setup https://bad.example.com' })).toBeInTheDocument();
+    // The flag is used up: a later reload opens the server as usual.
+    expect(window.location.search).toBe('');
+    await new Promise((resolve) => setTimeout(resolve, 850));
+    expect(navigateToServer).not.toHaveBeenCalled();
+    expect(enableNativeNotificationsForServer).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save server' }));
+    expect(navigateToServer).toHaveBeenCalledWith('https://chat.example.com');
+  });
+
   it('does not flash standalone server switching while opening a stored server', async () => {
     vi.mocked(loadStoredSession).mockResolvedValue({
       serverUrl: 'https://bad.example.com',

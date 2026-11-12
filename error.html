@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#231f20" />
+    <title>ex</title>
+  </head>
+  <body>
+    <!-- Android loads this page (server.errorPath) when a server page fails to load. -->
+    <main class="loading-screen error-screen">
+      <div class="error-panel" role="alert">
+        <img class="brand-logo" src="/logo.svg" alt="DigitalTolk chat" />
+        <h1>Can't reach the chat server</h1>
+        <p>Check your internet connection. The app tries again by itself once you're back online.</p>
+        <button type="button" id="retry" class="error-retry-button">Try again</button>
+        <button type="button" id="change-server" class="link-button">Change server</button>
+      </div>
+    </main>
+    <script type="module">
+      import { initErrorPage } from '/src/error.ts';
+      initErrorPage(document, window);
+    </script>
+  </body>
+</html>

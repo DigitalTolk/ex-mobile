@@ -381,3 +381,36 @@ input:focus {
     grid-template-columns: 280px minmax(0, 1fr);
   }
 }
+
+.error-screen {
+  text-align: center;
+}
+
+.error-panel {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  max-width: 320px;
+}
+
+.error-panel h1 {
+  margin: 14px 0 0;
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.error-panel p {
+  margin: 0 0 12px;
+  color: rgb(255 255 255 / 0.72);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.error-panel button {
+  width: 100%;
+}
+
+.error-retry-button {
+  color: #231f20;
+  background: #fff;
+}
